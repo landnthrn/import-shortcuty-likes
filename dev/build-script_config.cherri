@@ -1,0 +1,971 @@
+#define name Shortcuty Import Helper Config
+#define color blue
+
+#include 'actions/documents'
+#include 'actions/text'
+
+/* shortcuty import helper config
+ * created by landnthrn
+ * https://github.com/landnthrn/
+ *
+ * saves settings.json, cache.json, session.json, and history.json in icloud drive/shortcuts/shortcuty import helper
+ */
+
+action 'text.split' splitDynamic(
+    variable input: 'text'
+): array
+
+action 'text.split' splitCachedRecord(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "~SPLIT~"
+}
+
+action 'text.split' splitHistoryTokens(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "|"
+}
+
+/* check the storage folder and files */
+
+@folderProbe = getFile(
+    "Shortcuty Import Helper",
+    nil,
+    false
+)
+
+if !@folderProbe {
+    createFolder("Shortcuty Import Helper")
+}
+
+/* check full paths because file names may omit their extensions */
+@settingsProbe = getFile("Shortcuty Import Helper/settings.json", nil, false)
+@cacheProbe = getFile("Shortcuty Import Helper/cache.json", nil, false)
+@sessionProbe = getFile("Shortcuty Import Helper/session.json", nil, false)
+@historyProbe = getFile("Shortcuty Import Helper/history.json", nil, false)
+
+@hasSettings = 0
+@hasCache = 0
+@hasSession = 0
+@hasHistory = 0
+
+if @settingsProbe {
+    @hasSettings = 1
+}
+if @cacheProbe {
+    @hasCache = 1
+}
+if @sessionProbe {
+    @hasSession = 1
+}
+if @historyProbe {
+    @hasHistory = 1
+}
+
+/* report newly created files once */
+@createdFilesText = ""
+@createdCount = 0
+
+/* load preferences and defaults */
+
+@mode = "Guided Mode"
+@approveWait = "6"
+@automaticWait = "8"
+@limit = "0"
+@welcome = "Yes"
+@progress = "Yes"
+@summary = "Yes"
+@skipInstalled = "Yes"
+@historyDetection = "Yes"
+@actionDetection = "Yes"
+@nameDetection = "Yes"
+
+if @hasSettings == 0 {
+
+    @defaultSettings = {
+        "schemaVersion": 2,
+        "importMode": "Guided Mode",
+        "delaySeconds": "6",
+        "approveWaitSeconds": "6",
+        "automaticWaitSeconds": "8",
+        "extraWaitSeconds": "4",
+        "sessionLimit": "0",
+        "showWelcome": "Yes",
+        "showProgress": "Yes",
+        "showSummary": "Yes",
+        "skipPreviouslyInstalled": "Yes",
+        "detectInstallationHistory": "Yes",
+        "detectInstallationActions": "Yes",
+        "detectInstalledNames": "Yes"
+    }
+
+    saveFile(
+        "Shortcuty Import Helper/settings.json",
+        @defaultSettings,
+        false
+    )
+
+    @createdCount += 1
+    @createdFilesText += "settings.json\n"
+
+} else {
+
+    @settingsNeedsMigration = 0
+    @settingsFile = getFile("Shortcuty Import Helper/settings.json")
+    @settingsData = getDictionary(@settingsFile)
+
+    @rawMode = getValue(@settingsData, "importMode")
+    if @rawMode {
+        @mode = "{@rawMode}"
+    }
+    if @mode == "Approve Next" {
+        @mode = "Guided Mode"
+        @settingsNeedsMigration = 1
+    }
+    if @mode == "Automatic" {
+        @mode = "Automatic Mode"
+        @settingsNeedsMigration = 1
+    }
+    if @mode != "Guided Mode" && @mode != "Automatic Mode" {
+        @mode = "Guided Mode"
+        @settingsNeedsMigration = 1
+    }
+
+    @rawApprove = getValue(@settingsData, "approveWaitSeconds")
+    if !@rawApprove {
+        @settingsNeedsMigration = 1
+    }
+    if @rawApprove {
+        @approveWait = "{@rawApprove}"
+    } else {
+        /* keep the saved guided mode wait time */
+        @rawLegacyDelay = getValue(@settingsData, "delaySeconds")
+        if @rawLegacyDelay {
+            @approveWait = "{@rawLegacyDelay}"
+        }
+    }
+
+    @rawAutomatic = getValue(@settingsData, "automaticWaitSeconds")
+    if !@rawAutomatic {
+        @settingsNeedsMigration = 1
+    }
+    if @rawAutomatic {
+        @automaticWait = "{@rawAutomatic}"
+    }
+
+    @rawLimit = getValue(@settingsData, "sessionLimit")
+    if !@rawLimit {
+        @settingsNeedsMigration = 1
+    }
+    if @rawLimit {
+        @limit = "{@rawLimit}"
+    }
+
+    @rawWelcome = getValue(@settingsData, "showWelcome")
+    if !@rawWelcome {
+        @settingsNeedsMigration = 1
+    }
+    if @rawWelcome {
+        @welcome = "{@rawWelcome}"
+    }
+
+    @rawProgress = getValue(@settingsData, "showProgress")
+    if !@rawProgress {
+        @settingsNeedsMigration = 1
+    }
+    if @rawProgress {
+        @progress = "{@rawProgress}"
+    }
+
+    /* always enable the completion screen */
+    @rawSummary = getValue(@settingsData, "showSummary")
+    @storedSummary = "{@rawSummary}"
+    if @storedSummary != "Yes" {
+        @settingsNeedsMigration = 1
+    }
+
+    @rawSkip = getValue(@settingsData, "skipPreviouslyInstalled")
+    if !@rawSkip {
+        @settingsNeedsMigration = 1
+    }
+    if @rawSkip {
+        @skipInstalled = "{@rawSkip}"
+    }
+
+    @rawHistoryDetection = getValue(@settingsData, "detectInstallationHistory")
+    if !@rawHistoryDetection {
+        @settingsNeedsMigration = 1
+    }
+    if @rawHistoryDetection {
+        @historyDetection = "{@rawHistoryDetection}"
+    }
+
+    @rawActionDetection = getValue(@settingsData, "detectInstallationActions")
+    if @rawActionDetection {
+        @actionDetection = "{@rawActionDetection}"
+    } else {
+        @settingsNeedsMigration = 1
+    }
+
+    @rawNameDetection = getValue(@settingsData, "detectInstalledNames")
+    if !@rawNameDetection {
+        @settingsNeedsMigration = 1
+    }
+    if @rawNameDetection {
+        @nameDetection = "{@rawNameDetection}"
+    }
+
+    /* save settings only when migration is needed */
+    if @settingsNeedsMigration == 1 {
+        @settingsData = {
+            "schemaVersion": 2,
+            "importMode": "{@mode}",
+            "delaySeconds": "{@approveWait}",
+            "approveWaitSeconds": "{@approveWait}",
+            "automaticWaitSeconds": "{@automaticWait}",
+            "extraWaitSeconds": "4",
+            "sessionLimit": "{@limit}",
+            "showWelcome": "{@welcome}",
+            "showProgress": "{@progress}",
+            "showSummary": "{@summary}",
+            "skipPreviouslyInstalled": "{@skipInstalled}",
+            "detectInstallationHistory": "{@historyDetection}",
+            "detectInstallationActions": "{@actionDetection}",
+            "detectInstalledNames": "{@nameDetection}"
+        }
+
+        saveFile(
+            "Shortcuty Import Helper/settings.json",
+            @settingsData,
+            true
+        )
+    }
+}
+
+/* create the cache if missing */
+
+if @hasCache == 0 {
+    @newCache = {
+        "schemaVersion": 2,
+        "scanned": false,
+        "sourceName": "",
+        "catalogKey": "",
+        "scannedAt": "",
+        "groupsText": "",
+        "indexText": "",
+        "installedText": ""
+    }
+
+    saveFile(
+        "Shortcuty Import Helper/cache.json",
+        @newCache,
+        false
+    )
+
+    @createdCount += 1
+    @createdFilesText += "cache.json\n"
+}
+
+/* create the session file if missing */
+
+if @hasSession == 0 {
+    @newSession = {
+        "schemaVersion": 2,
+        "active": false,
+        "catalogKey": "",
+        "group": "",
+        "selectionType": "",
+        "selectionText": "",
+        "nextIndex": 1,
+        "total": 0,
+        "installedCount": 0,
+        "skippedCount": 0
+    }
+
+    saveFile(
+        "Shortcuty Import Helper/session.json",
+        @newSession,
+        false
+    )
+
+    @createdCount += 1
+    @createdFilesText += "session.json\n"
+}
+
+/* set up installation history */
+
+if @hasHistory == 0 {
+    @newHistory = {
+        "schemaVersion": 1,
+        "installedText": ""
+    }
+
+    saveFile(
+        "Shortcuty Import Helper/history.json",
+        @newHistory,
+        false
+    )
+
+    @createdCount += 1
+    @createdFilesText += "history.json\n"
+}
+
+if @createdCount > 0 {
+    alert(
+        "Created {@createdCount} storage file(s):\n\n{@createdFilesText}",
+        "Setup Complete"
+    )
+}
+
+/* copy older installation records without replacing saved history */
+@cacheFileForMigration = getFile("Shortcuty Import Helper/cache.json")
+@cacheForMigration = getDictionary(@cacheFileForMigration)
+@legacyRaw = getValue(@cacheForMigration, "installedText")
+@legacyText = "{@legacyRaw}"
+
+@historyFileForMigration = getFile("Shortcuty Import Helper/history.json")
+@historyForMigration = getDictionary(@historyFileForMigration)
+@historyRaw = getValue(@historyForMigration, "installedText")
+@historyText = "{@historyRaw}"
+@historyChanged = 0
+
+if @legacyText contains "https://shortcuty.app/api/shortcuts/" {
+    @oldTokens = splitHistoryTokens(@legacyText)
+
+    for oldToken in @oldTokens {
+        @oldURL = "{@oldToken}"
+
+        if @oldURL beginsWith "https://shortcuty.app/api/shortcuts/" {
+            if @oldURL endsWith "/get" {
+                @historyToken = "|{@oldURL}|"
+
+                if @historyText !contains @historyToken {
+                    @historyText += "{@historyToken}"
+                    @historyChanged = 1
+                }
+            }
+        }
+    }
+}
+
+if @historyChanged == 1 {
+    @historyForMigration = setValue(
+        @historyForMigration,
+        "installedText",
+        "{@historyText}"
+    )
+
+    saveFile(
+        "Shortcuty Import Helper/history.json",
+        @historyForMigration,
+        true
+    )
+}
+
+/* get shortcut names for records found in the cached catalog */
+@knownHistoryNames = ""
+@knownHistoryCount = 0
+@knownHistorySeen = "|"
+@historyNameIndexRaw = getValue(@cacheForMigration, "indexText")
+@historyNameIndex = "{@historyNameIndexRaw}"
+if @historyText contains "https://shortcuty.app/api/shortcuts/" {
+    @historyNameRows = splitDynamic(@historyNameIndex)
+    for historyNameRow in @historyNameRows {
+        @historyNameLine = "{@historyNameRow}"
+        if @historyNameLine contains "~SPLIT~ready~SPLIT~" {
+            @historyNameFields = splitCachedRecord(@historyNameLine)
+            @historyNameRaw = getListItem(@historyNameFields, 3)
+            @historyURLRaw = getListItem(@historyNameFields, 4)
+            @historyName = "{@historyNameRaw}"
+            @historyURL = "{@historyURLRaw}"
+            @historyNameToken = "|{@historyURL}|"
+            if @historyText contains @historyNameToken && @knownHistorySeen !contains @historyNameToken {
+                @knownHistorySeen += "{@historyNameToken}"
+                @knownHistoryCount += 1
+                @knownHistoryNames += "{@knownHistoryCount}. {@historyName}\n"
+            }
+        }
+    }
+}
+
+/* config menu */
+
+@yesNo = list("On", "Off")
+@menuPage = "Main"
+
+repeat configPass for 100 {
+
+    @saveSettings = 0
+
+    /* reload the cached state before showing menu options */
+    @liveCacheFile = getFile("Shortcuty Import Helper/cache.json")
+    @liveCache = getDictionary(@liveCacheFile)
+    @liveSessionFile = getFile("Shortcuty Import Helper/session.json")
+    @liveSession = getDictionary(@liveSessionFile)
+
+    @scannedRaw = getValue(@liveCache, "scanned")
+    @scannedNumber = number(@scannedRaw)
+    @catalogKeyRaw = getValue(@liveCache, "catalogKey")
+    @liveCatalogKey = "{@catalogKeyRaw}"
+
+    @activeRaw = getValue(@liveSession, "active")
+    @activeNumber = number(@activeRaw)
+    @sessionKeyRaw = getValue(@liveSession, "catalogKey")
+    @liveSessionKey = "{@sessionKeyRaw}"
+    @positionRaw = getValue(@liveSession, "nextIndex")
+    @sessionTotalRaw = getValue(@liveSession, "total")
+    @sessionPosition = number(@positionRaw)
+    @sessionTotal = number(@sessionTotalRaw)
+
+    @hasIncomplete = 0
+    if @activeNumber == 1 {
+        if @scannedNumber == 1 {
+            if @liveSessionKey == @liveCatalogKey {
+                if @sessionPosition <= @sessionTotal {
+                    @hasIncomplete = 1
+                }
+            }
+        }
+    }
+
+    @welcomeLabel = "Off"
+    @progressLabel = "Off"
+    @skipInstalledLabel = "Off"
+    @actionLabel = "Off"
+    @nameLabel = "Off"
+    @historyLabel = "Off"
+
+    if @welcome == "Yes" {
+        @welcomeLabel = "On"
+    }
+    if @progress == "Yes" {
+        @progressLabel = "On"
+    }
+    if @skipInstalled == "Yes" {
+        @skipInstalledLabel = "On"
+    }
+    if @actionDetection == "Yes" {
+        @actionLabel = "On"
+    }
+    if @nameDetection == "Yes" {
+        @nameLabel = "On"
+    }
+    if @historyDetection == "Yes" {
+        @historyLabel = "On"
+    }
+
+    @settingsSummary = "Mode: {@mode}\nGuided Mode wait: {@approveWait} seconds\nAutomatic Mode wait: {@automaticWait} seconds\nExtra-time options: 4 / 30 / 60 seconds\nSession limit: {@limit} (0 = unlimited; Automatic Mode only)\nWelcome: {@welcomeLabel}\nProgress: {@progressLabel}\nCompletion screen: Always shown\nSkip previously installed: {@skipInstalledLabel}\nInstallation action tracking: {@actionLabel}\nExact name matching: {@nameLabel}\nSaved installed history: {@historyLabel}"
+
+    @menuChoice = ""
+
+    if @menuPage == "Main" {
+        @mainOptions: array
+        @mainOptions += "Change preferences"
+        @mainOptions += "View current settings"
+
+        if @hasIncomplete == 1 {
+            @mainOptions += "View saved cache / session"
+        } else {
+            @mainOptions += "View saved cache"
+        }
+
+        @mainOptions += "View detected installed shortcuts"
+
+        if @hasIncomplete == 1 {
+            @mainOptions += "Clear cached catalog and session"
+            @mainOptions += "Clear incomplete session"
+        } else {
+            @mainOptions += "Clear cached catalog"
+        }
+
+        @mainOptions += "Clear installation history"
+        @mainOptions += "Restore default settings"
+        @mainOptions += "Done"
+
+        @mainRaw = chooseFromList(
+            @mainOptions,
+            "Shortcuty Import Helper Config\n\nChoose a setting to review or change."
+        )
+        @menuChoice = "{@mainRaw}"
+
+    } else {
+        @preferenceOptions = list(
+            "Import mode",
+            "Default wait",
+            "Session limit",
+            "Welcome screen: On / Off",
+            "Progress labels: On / Off",
+            "Skip previously installed: On / Off",
+            "Installation action tracking: On / Off",
+            "Installed shortcut name matching: On / Off",
+            "Saved installed history: On / Off",
+            "Back to main menu"
+        )
+
+        @preferenceRaw = chooseFromList(
+            @preferenceOptions,
+            "Change preferences\n\nChoose a setting to change."
+        )
+        @menuChoice = "{@preferenceRaw}"
+    }
+
+    if @menuChoice == "Done" {
+        stop()
+    }
+
+    if @menuChoice == "Change preferences" {
+        @menuPage = "Preferences"
+    }
+
+    if @menuChoice == "Back to main menu" {
+        @menuPage = "Main"
+    }
+
+    /* current settings */
+
+    if @menuChoice == "View current settings" {
+        show("Current Settings\n\n{@settingsSummary}")
+    }
+
+    /* import mode */
+
+    if @menuChoice == "Import mode" {
+        @modes = list("Guided Mode", "Automatic Mode")
+        @rawModeChoice = chooseFromList(
+            @modes,
+            "Choose import mode\n\nCurrent: {@mode}\n\n'Guided Mode' asks before each installation. 'Automatic Mode' continues through the selected shortcuts after its configured wait."
+        )
+        @pickedMode = "{@rawModeChoice}"
+
+        if @pickedMode == "Guided Mode" || @pickedMode == "Automatic Mode" {
+            @mode = @pickedMode
+            @saveSettings = 1
+        }
+
+        if @pickedMode == "Automatic Mode" {
+            alert(
+                "'Automatic Mode' opens each subsequent installation link after the configured wait.\n\nIt may interrupt adding a shortcut.",
+                "Automatic Mode"
+            )
+        }
+    }
+
+    /* wait times */
+
+    if @menuChoice == "Default wait" {
+        @approveChoice = "Guided Mode — {@approveWait} seconds"
+        @automaticChoice = "Automatic Mode — {@automaticWait} seconds"
+        @waitChoices = list(
+            "{@approveChoice}",
+            "{@automaticChoice}",
+            "Cancel"
+        )
+
+        @rawWaitMode = chooseFromList(
+            @waitChoices,
+            "Choose which mode's wait time to change\n\nGuided Mode: {@approveWait} seconds\nAutomatic Mode: {@automaticWait} seconds\n\nThis sets how long the Import Helper waits after opening an installation link."
+        )
+        @waitMode = "{@rawWaitMode}"
+
+        if @waitMode == @approveChoice {
+            @rawDelay = prompt(
+                "Guided Mode wait time in seconds (minimum 5)\n\nCurrent: {@approveWait} seconds",
+                "Number",
+                "{@approveWait}"
+            )
+            @newDelay = number(@rawDelay)
+
+            if @newDelay >= 5 {
+                @approveWait = "{@newDelay}"
+                @saveSettings = 1
+            } else {
+                alert(
+                    "Enter 5 seconds or more. No changes saved.",
+                    "Invalid Delay"
+                )
+            }
+        }
+
+        if @waitMode == @automaticChoice {
+            @rawDelay = prompt(
+                "Automatic Mode wait time in seconds (minimum 5)\n\nCurrent: {@automaticWait} seconds",
+                "Number",
+                "{@automaticWait}"
+            )
+            @newDelay = number(@rawDelay)
+
+            if @newDelay >= 5 {
+                @automaticWait = "{@newDelay}"
+                @saveSettings = 1
+            } else {
+                alert(
+                    "Enter 5 seconds or more. No changes saved.",
+                    "Invalid Delay"
+                )
+            }
+        }
+    }
+
+    /* automatic mode session limit */
+
+    if @menuChoice == "Session limit" {
+        @rawLimit = prompt(
+            "Maximum shortcuts per 'Automatic Mode' session (0 = unlimited)\n\nCurrent: {@limit}\n\nLimits the shortcuts handled in one 'Automatic Mode' session. 'Guided Mode' has no configured session limit.",
+            "Number",
+            "{@limit}"
+        )
+        @newLimit = number(@rawLimit)
+
+        if @newLimit >= 0 {
+            @limit = "{@newLimit}"
+            @saveSettings = 1
+        } else {
+            alert(
+                "Enter 0 or a positive number.",
+                "Invalid Limit"
+            )
+        }
+    }
+
+    /* settings toggles */
+
+    if @menuChoice == "Welcome screen: On / Off" {
+        @rawToggle = chooseFromList(
+            @yesNo,
+            "Show welcome screen?\n\nCurrent: {@welcomeLabel}\n\nDisplays the introduction when the main Import Helper starts."
+        )
+        @toggleChoice = "{@rawToggle}"
+        if @toggleChoice == "On" || @toggleChoice == "Off" {
+            @welcome = "No"
+            if @toggleChoice == "On" {
+                @welcome = "Yes"
+            }
+            @saveSettings = 1
+        }
+    }
+
+    if @menuChoice == "Progress labels: On / Off" {
+        @rawToggle = chooseFromList(
+            @yesNo,
+            "Display progress labels?\n\nCurrent: {@progressLabel}\n\nShows installed and skipped counts on individual 'Guided Mode' import prompts."
+        )
+        @toggleChoice = "{@rawToggle}"
+        if @toggleChoice == "On" || @toggleChoice == "Off" {
+            @progress = "No"
+            if @toggleChoice == "On" {
+                @progress = "Yes"
+            }
+            @saveSettings = 1
+        }
+    }
+
+    if @menuChoice == "Skip previously installed: On / Off" {
+        @rawToggle = chooseFromList(
+            @yesNo,
+            "Skip previously installed shortcuts?\n\nCurrent: {@skipInstalledLabel}\n\nWhen enabled, shortcuts detected as installed by any enabled method are skipped automatically. When disabled, detected shortcuts remain in the import process."
+        )
+        @toggleChoice = "{@rawToggle}"
+        if @toggleChoice == "On" || @toggleChoice == "Off" {
+            @skipInstalled = "No"
+            if @toggleChoice == "On" {
+                @skipInstalled = "Yes"
+            }
+            @saveSettings = 1
+        }
+    }
+
+    if @menuChoice == "Installation action tracking: On / Off" {
+        @rawToggle = chooseFromList(
+            @yesNo,
+            "Use current-session installation actions to detect installed shortcuts?\n\nCurrent: {@actionLabel}\n\nWhen a user chooses 'Open installation' or 'Skip, it's already installed', that action can count as installed within the current run. Such decisions are saved to history even when this setting is Off."
+        )
+        @toggleChoice = "{@rawToggle}"
+        if @toggleChoice == "On" || @toggleChoice == "Off" {
+            @actionDetection = "No"
+            if @toggleChoice == "On" {
+                @actionDetection = "Yes"
+            }
+            @saveSettings = 1
+        }
+    }
+
+    if @menuChoice == "Installed shortcut name matching: On / Off" {
+        @rawToggle = chooseFromList(
+            @yesNo,
+            "Detect installed shortcuts using exact name matching?\n\nCurrent: {@nameLabel}\n\nChecks names in Apple Shortcuts, including folders, against the catalog. Matching names can occasionally be unrelated. Detected matches are added to saved installed history even if history detection is Off."
+        )
+        @toggleChoice = "{@rawToggle}"
+        if @toggleChoice == "On" || @toggleChoice == "Off" {
+            @nameDetection = "No"
+            if @toggleChoice == "On" {
+                @nameDetection = "Yes"
+            }
+            @saveSettings = 1
+        }
+    }
+
+    if @menuChoice == "Saved installed history: On / Off" {
+        @rawToggle = chooseFromList(
+            @yesNo,
+            "Use saved history to detect previously installed shortcuts?\n\nCurrent: {@historyLabel}\n\nReuses installed shortcuts recorded by installation actions and name matching on previous runs. Even when Off, new detections continue to be recorded; saved records simply are not used for automatic detection."
+        )
+        @toggleChoice = "{@rawToggle}"
+        if @toggleChoice == "On" || @toggleChoice == "Off" {
+            @historyDetection = "No"
+            if @toggleChoice == "On" {
+                @historyDetection = "Yes"
+            }
+            @saveSettings = 1
+        }
+    }
+
+    /* saved cache and session */
+
+    if @menuChoice == "View saved cache" || @menuChoice == "View saved cache / session" {
+        @cachedNameRaw = getValue(@liveCache, "sourceName")
+        @cachedName = "{@cachedNameRaw}"
+        if @cachedName != "" {
+            if @cachedName endsWith ".md" {
+                nothing()
+            } else {
+                @cachedName += ".md"
+            }
+        }
+        @cacheScannedText = "{@scannedRaw}"
+
+        @groupsRaw = getValue(@liveCache, "groupsText")
+        @groupsText = "{@groupsRaw}"
+        @indexRaw = getValue(@liveCache, "indexText")
+        @indexText = "{@indexRaw}"
+
+        /* count cached entries without rebuilding the catalog */
+        @sectionMatches = matchText('(?m)^.+$', @groupsText)
+        @readyMatches = matchText('~SPLIT~ready~SPLIT~', @indexText)
+        @excludedMatches = matchText('~SPLIT~unchecked~SPLIT~', @indexText)
+        @invalidMatches = matchText('~SPLIT~invalid~SPLIT~', @indexText)
+        @sectionCount = count(@sectionMatches)
+        @readyCount = count(@readyMatches)
+        @uncheckedCount = count(@excludedMatches)
+        @invalidCount = count(@invalidMatches)
+
+        @liveHistoryFile = getFile("Shortcuty Import Helper/history.json")
+        @liveHistory = getDictionary(@liveHistoryFile)
+        @savedHistoryRaw = getValue(@liveHistory, "installedText")
+        @savedHistoryText = "{@savedHistoryRaw}"
+        @savedHistoryMatches = matchText('https://shortcuty[.]app/api/shortcuts/[0-9a-fA-F-]+/get', @savedHistoryText)
+        @recordedCount = count(@savedHistoryMatches)
+
+        @cacheInfo = "Catalog: {@cachedName}\nScanned: {@cacheScannedText}\nSections: {@sectionCount}\nSet for import: {@readyCount}\nExcluded: {@uncheckedCount}\nInvalid: {@invalidCount}\n\nSaved installation history: {@recordedCount} shortcuts"
+
+        if @hasIncomplete == 1 {
+            @sessionSelectionRaw = getValue(@liveSession, "group")
+            @sessionSelection = "{@sessionSelectionRaw}"
+            @cacheInfo += "\n\nIncomplete session: Yes\nSelection: {@sessionSelection}"
+        }
+
+        show("Saved Data\n\n{@cacheInfo}")
+    }
+
+    /* installed shortcut history */
+
+    if @menuChoice == "View detected installed shortcuts" {
+        @historyViewFile = getFile("Shortcuty Import Helper/history.json")
+        @historyViewDict = getDictionary(@historyViewFile)
+        @historyViewRaw = getValue(@historyViewDict, "installedText")
+        @historyViewStored = "{@historyViewRaw}"
+        @historyURLMatches = matchText('https://shortcuty[.]app/api/shortcuts/[0-9a-fA-F-]+/get', @historyViewStored)
+        @historyEntries = count(@historyURLMatches)
+
+        if @historyEntries == 0 {
+            alert("No shortcuts are recorded in saved installed history.", "Detected Installed Shortcuts")
+        } else {
+            /* show names for known records and count the rest separately */
+            @unknownHistoryCount = @historyEntries - @knownHistoryCount
+            if @unknownHistoryCount < 0 {
+                @unknownHistoryCount = 0
+            }
+            @historyViewBody = "Detected Installed Shortcuts\n\nSaved records: {@historyEntries}\n\nThese saved detections do not prove that Apple Shortcuts currently contains every item."
+            if @knownHistoryNames != "" {
+                @historyViewBody += "\n\nRecorded shortcuts:\n{@knownHistoryNames}"
+            }
+            if @unknownHistoryCount > 0 {
+                @historyViewBody += "\n{@unknownHistoryCount} additional record(s) not identified in the current catalog."
+            }
+            show("{@historyViewBody}")
+        }
+    }
+
+    /* clear the cached catalog and session */
+
+    if @menuChoice == "Clear cached catalog" || @menuChoice == "Clear cached catalog and session" {
+        @clearPrompt = "Clear the cached catalog? Settings and installation history will be kept."
+        if @hasIncomplete == 1 {
+            @clearPrompt = "Clear the cached catalog and session? Settings and installation history will be kept."
+        }
+
+        @clearChoices = list("Cancel", "Clear saved data")
+        @rawClear = chooseFromList(@clearChoices, "{@clearPrompt}")
+        @clearDecision = "{@rawClear}"
+
+        if @clearDecision == "Clear saved data" {
+            @resetCache = {
+                "schemaVersion": 2,
+                "scanned": false,
+                "sourceName": "",
+                "catalogKey": "",
+                "scannedAt": "",
+                "groupsText": "",
+                "indexText": "",
+                "installedText": ""
+            }
+            saveFile("Shortcuty Import Helper/cache.json", @resetCache, true)
+
+            @resetSession = {
+                "schemaVersion": 2,
+                "active": false,
+                "catalogKey": "",
+                "group": "",
+                "selectionType": "",
+                "selectionText": "",
+                "nextIndex": 1,
+                "total": 0,
+                "installedCount": 0,
+                "skippedCount": 0
+            }
+            saveFile("Shortcuty Import Helper/session.json", @resetSession, true)
+
+            if @hasIncomplete == 1 {
+                alert("Catalog cache and session cleared.", "Complete")
+            } else {
+                alert("Catalog cache cleared.", "Complete")
+            }
+        }
+    }
+
+    /* clear the unfinished session */
+
+    if @menuChoice == "Clear incomplete session" {
+        @clearSessionChoices = list("Cancel", "Clear session")
+        @rawClearSession = chooseFromList(
+            @clearSessionChoices,
+            "Clear session? The catalog cache and installation history will be kept."
+        )
+        @sessionDecision = "{@rawClearSession}"
+
+        if @sessionDecision == "Clear session" {
+            @resetSession = {
+                "schemaVersion": 2,
+                "active": false,
+                "catalogKey": "",
+                "group": "",
+                "selectionType": "",
+                "selectionText": "",
+                "nextIndex": 1,
+                "total": 0,
+                "installedCount": 0,
+                "skippedCount": 0
+            }
+            saveFile("Shortcuty Import Helper/session.json", @resetSession, true)
+            alert("Incomplete session cleared.", "Complete")
+        }
+    }
+
+    /* confirm before clearing installation history */
+
+    if @menuChoice == "Clear installation history" {
+        @historyClearPrompt = "Clear saved installation history?\n\nThis history remembers shortcuts across catalog scans. Clearing it removes those saved records. Catalog cache and settings will be kept."
+
+        if @hasIncomplete == 1 {
+            @historyClearPrompt = "Clear saved installation history?\n\nThis history remembers shortcuts across catalog scans. Clearing it removes those saved records. Catalog cache, session, and settings will be kept."
+        }
+
+        @historyClearChoices = list("Cancel", "Clear installation history")
+        @rawHistoryClear = chooseFromList(
+            @historyClearChoices,
+            "{@historyClearPrompt}"
+        )
+        @historyClearDecision = "{@rawHistoryClear}"
+
+        if @historyClearDecision == "Clear installation history" {
+            @reallyClearChoices = list("Cancel", "Yes, clear installation history")
+            @rawReallyClear = chooseFromList(
+                @reallyClearChoices,
+                "Are you sure you want to clear installation history?\n\nThis permanently removes the helper's saved installation records, but won't remove shortcuts from Apple Shortcuts."
+            )
+            @reallyClear = "{@rawReallyClear}"
+
+            if @reallyClear == "Yes, clear installation history" {
+                @emptyHistory = {
+                    "schemaVersion": 1,
+                    "installedText": ""
+                }
+                saveFile("Shortcuty Import Helper/history.json", @emptyHistory, true)
+                @knownHistoryNames = ""
+
+                /* clear cached history tokens so they cannot be restored */
+                @liveCache = setValue(@liveCache, "installedText", "")
+                saveFile("Shortcuty Import Helper/cache.json", @liveCache, true)
+
+                alert("Installation history cleared.", "Complete")
+            }
+        }
+    }
+
+    /* restore default settings */
+
+    if @menuChoice == "Restore default settings" {
+        @restorePrompt = "Restore default settings? Cache and installation history will be kept."
+        if @hasIncomplete == 1 {
+            @restorePrompt = "Restore default settings? Cache, session, and installation history will be kept."
+        }
+
+        @restoreChoices = list("Cancel", "Restore defaults")
+        @rawRestore = chooseFromList(@restoreChoices, "{@restorePrompt}")
+        @restoreDecision = "{@rawRestore}"
+
+        if @restoreDecision == "Restore defaults" {
+            @mode = "Guided Mode"
+            @approveWait = "6"
+            @automaticWait = "8"
+            @limit = "0"
+            @welcome = "Yes"
+            @progress = "Yes"
+            @summary = "Yes"
+            @skipInstalled = "Yes"
+            @historyDetection = "Yes"
+            @actionDetection = "Yes"
+            @nameDetection = "Yes"
+            @saveSettings = 1
+        }
+    }
+
+    /* save preferences */
+
+    if @saveSettings == 1 {
+        @updatedSettings = {
+            "schemaVersion": 2,
+            "importMode": "{@mode}",
+            "delaySeconds": "{@approveWait}",
+            "approveWaitSeconds": "{@approveWait}",
+            "automaticWaitSeconds": "{@automaticWait}",
+            "extraWaitSeconds": "4",
+            "sessionLimit": "{@limit}",
+            "showWelcome": "{@welcome}",
+            "showProgress": "{@progress}",
+            "showSummary": "{@summary}",
+            "skipPreviouslyInstalled": "{@skipInstalled}",
+            "detectInstallationHistory": "{@historyDetection}",
+            "detectInstallationActions": "{@actionDetection}",
+            "detectInstalledNames": "{@nameDetection}"
+        }
+
+        saveFile(
+            "Shortcuty Import Helper/settings.json",
+            @updatedSettings,
+            true
+        )
+    }
+}

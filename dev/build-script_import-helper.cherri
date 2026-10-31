@@ -1,0 +1,1613 @@
+#define name Shortcuty Import Helper
+#define color blue
+
+#include 'actions/documents'
+#include 'actions/text'
+#include 'actions/web'
+#include 'actions/shortcuts'
+
+/* shortcuty import helper
+ * version 2.0.2
+ * created by landnthrn
+ * https://github.com/landnthrn/
+ *
+ * uses settings.json, cache.json, session.json, and history.json in icloud drive/shortcuts/shortcuty import helper
+ */
+
+action 'text.split' splitDynamic(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "New Lines"
+}
+
+action 'text.split' splitFolderHeading(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "## "
+}
+
+action 'text.split' splitCheckedName(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "- [x] "
+}
+
+action 'text.split' splitUncheckedName(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "- [ ] "
+}
+
+action 'text.split' splitInstallLine(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "Install: "
+}
+
+action 'text.split' splitCachedRecord(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "~SPLIT~"
+}
+
+action 'text.split' splitHistoryTokens(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": "|"
+}
+
+action 'text.split' splitCustomIndex(
+    variable input: 'text'
+): array {
+    "WFTextSeparator": "Custom",
+    "WFTextCustomSeparator": " • "
+}
+
+action 'runworkflow' launchConfig(
+    text shortcutName: 'WFWorkflowName'
+)
+
+action 'getmyworkflows' listInstalledShortcuts(): array
+
+action 'properties.workflow' installedShortcutName(
+    variable shortcut: 'WFInput'
+): text {
+    "WFContentItemPropertyName": "Name"
+}
+
+/* check for the config shortcut */
+
+@deviceShortcuts = listInstalledShortcuts()
+@configPresent = 0
+@installedNamesText = "|"
+
+for deviceShortcut in @deviceShortcuts {
+    @deviceNameRaw = installedShortcutName(@deviceShortcut)
+    @deviceName = "{@deviceNameRaw}"
+
+    if @deviceName == "Shortcuty Import Helper Config" {
+        @configPresent = 1
+    }
+
+    @nameToken = "|{@deviceName}|"
+    if @installedNamesText !contains @nameToken {
+        @installedNamesText += "{@deviceName}|"
+    }
+}
+
+if @configPresent == 0 {
+    alert(
+        "The config shortcut wasn’t found, you’ll need to add it now to create the necessary local files for the import helper.",
+        "Config Required"
+    )
+    openURL("https://www.icloud.com/shortcuts/b5f06b177f86428e8babd04db5df5d33")
+    stop()
+}
+
+/* load saved settings and data */
+
+@settingsFile = getFile("Shortcuty Import Helper/settings.json", nil, false)
+@cacheFile = getFile("Shortcuty Import Helper/cache.json", nil, false)
+@sessionFile = getFile("Shortcuty Import Helper/session.json", nil, false)
+@historyFile = getFile("Shortcuty Import Helper/history.json", nil, false)
+
+if !@settingsFile {
+    alert("Run Shortcuty Import Helper Config first.", "Setup Required")
+    stop()
+}
+if !@cacheFile {
+    alert("cache.json is missing. Run the Config shortcut.", "Setup Required")
+    stop()
+}
+if !@sessionFile {
+    alert("session.json is missing. Run the Config shortcut.", "Setup Required")
+    stop()
+}
+if !@historyFile {
+    alert("Installation history is missing. Run the Config shortcut.", "Setup Required")
+    stop()
+}
+
+@settings = getDictionary(@settingsFile)
+@cacheData = getDictionary(@cacheFile)
+@sessionData = getDictionary(@sessionFile)
+@historyData = getDictionary(@historyFile)
+
+@modeRaw = getValue(@settings, "importMode")
+@importMode = "{@modeRaw}"
+if @importMode == "Approve Next" {
+    @importMode = "Guided Mode"
+}
+if @importMode == "Automatic" {
+    @importMode = "Automatic Mode"
+}
+if @importMode != "Guided Mode" && @importMode != "Automatic Mode" {
+    @importMode = "Guided Mode"
+}
+
+@approveRaw = getValue(@settings, "approveWaitSeconds")
+@automaticRaw = getValue(@settings, "automaticWaitSeconds")
+@legacyDelayRaw = getValue(@settings, "delaySeconds")
+@limitRaw = getValue(@settings, "sessionLimit")
+
+@approveWait = 6
+if @approveRaw {
+    @approveWait = number(@approveRaw)
+} else {
+    if @legacyDelayRaw {
+        @approveWait = number(@legacyDelayRaw)
+    }
+}
+if @approveWait < 5 {
+    @approveWait = 6
+}
+
+@automaticWait = 8
+if @automaticRaw {
+    @automaticWait = number(@automaticRaw)
+}
+if @automaticWait < 5 {
+    @automaticWait = 8
+}
+
+@delaySeconds = @approveWait
+if @importMode == "Automatic Mode" {
+    @delaySeconds = @automaticWait
+}
+
+@sessionLimit = number(@limitRaw)
+if @sessionLimit < 0 {
+    @sessionLimit = 0
+}
+
+@welcomeRaw = getValue(@settings, "showWelcome")
+@progressRaw = getValue(@settings, "showProgress")
+@skipRaw = getValue(@settings, "skipPreviouslyInstalled")
+@detectHistoryRaw = getValue(@settings, "detectInstallationHistory")
+@detectActionsRaw = getValue(@settings, "detectInstallationActions")
+@detectNamesRaw = getValue(@settings, "detectInstalledNames")
+
+@showWelcome = "{@welcomeRaw}"
+@showProgress = "{@progressRaw}"
+@skipInstalled = "{@skipRaw}"
+@detectHistory = "{@detectHistoryRaw}"
+@detectActions = "{@detectActionsRaw}"
+@detectNames = "{@detectNamesRaw}"
+
+/* default missing detection settings to on */
+if @detectHistory != "No" {
+    @detectHistory = "Yes"
+}
+if @detectActions != "No" {
+    @detectActions = "Yes"
+}
+if @detectNames != "No" {
+    @detectNames = "Yes"
+}
+
+@scannedRaw = getValue(@cacheData, "scanned")
+@hasCatalog = number(@scannedRaw)
+@sourceRaw = getValue(@cacheData, "sourceName")
+@keyRaw = getValue(@cacheData, "catalogKey")
+@cacheSource = "{@sourceRaw}"
+@cacheKey = "{@keyRaw}"
+@cacheDisplayName = "{@cacheSource}"
+if @cacheDisplayName != "" {
+    if @cacheDisplayName endsWith ".md" {
+        nothing()
+    } else {
+        @cacheDisplayName += ".md"
+    }
+}
+
+@historyRaw = getValue(@historyData, "installedText")
+@historyText = "{@historyRaw}"
+
+@sessionActiveRaw = getValue(@sessionData, "active")
+@sessionActive = number(@sessionActiveRaw)
+@sessionKeyRaw = getValue(@sessionData, "catalogKey")
+@sessionGroupRaw = getValue(@sessionData, "group")
+@sessionKey = "{@sessionKeyRaw}"
+@sessionGroup = "{@sessionGroupRaw}"
+@sessionNextRaw = getValue(@sessionData, "nextIndex")
+@sessionTotalRaw = getValue(@sessionData, "total")
+@sessionNext = number(@sessionNextRaw)
+@sessionTotal = number(@sessionTotalRaw)
+
+/* keep session decisions separate from installation history */
+@sessionDecisionsRaw = getValue(@sessionData, "decisionsText")
+@sessionActionsRaw = getValue(@sessionData, "actionRunText")
+@sessionHistoryAddsRaw = getValue(@sessionData, "actionHistoryAddsText")
+@decisionsText = ""
+@actionRunText = "|"
+@actionHistoryAddsText = "|"
+if @sessionDecisionsRaw {
+    @decisionsText = "{@sessionDecisionsRaw}"
+}
+if @sessionActionsRaw {
+    @actionRunText = "{@sessionActionsRaw}"
+}
+if @sessionHistoryAddsRaw {
+    @actionHistoryAddsText = "{@sessionHistoryAddsRaw}"
+}
+
+@canResume = 0
+if @hasCatalog == 1 && @sessionActive == 1 {
+    if @sessionKey == @cacheKey && @sessionNext > 0 && @sessionNext <= @sessionTotal {
+        @canResume = 1
+    }
+}
+
+/* do not offer completed sessions for resuming */
+if @sessionActive == 1 && @canResume == 0 {
+    if @sessionNext > @sessionTotal && @sessionTotal > 0 {
+        @savedSelectionTypeRaw = getValue(@sessionData, "selectionType")
+        @savedSelectionTextRaw = getValue(@sessionData, "selectionText")
+        @savedInstalledRaw = getValue(@sessionData, "installedCount")
+        @savedSkippedRaw = getValue(@sessionData, "skippedCount")
+        @sessionData = {
+            "schemaVersion": 2,
+            "active": false,
+            "catalogKey": "{@sessionKey}",
+            "group": "{@sessionGroup}",
+            "selectionType": "{@savedSelectionTypeRaw}",
+            "selectionText": "{@savedSelectionTextRaw}",
+            "nextIndex": "{@sessionNext}",
+            "total": "{@sessionTotal}",
+            "installedCount": "{@savedInstalledRaw}",
+            "skippedCount": "{@savedSkippedRaw}",
+            "decisionsText": "{@decisionsText}",
+            "actionRunText": "{@actionRunText}",
+            "actionHistoryAddsText": "{@actionHistoryAddsText}"
+        }
+        saveFile("Shortcuty Import Helper/session.json", @sessionData, true)
+    }
+}
+
+/* welcome screen */
+
+@mainInput = "{ShortcutInput}"
+@reopenMainMarker = "SIH_REOPEN_MAIN_MENU"
+if @showWelcome == "Yes" && @mainInput != "SIH_REOPEN_MAIN_MENU" {
+    @welcome = "Shortcuty Import Helper\n\nVersion 2.0.2\nCreated by landnthrn\n\nA helper for importing, managing, and tracking a large collection of liked shortcuts from Shortcuty, into the Shortcuts app.\n\nNOTE:\n\nBefore using this shortcut, it's expected you have followed the guide from the README.md in the GitHub repo, all info you need is written in there.\n\ngithub.com/landnthrn/import-shortcuty-likes\n\nYour markdown file must be ready in the Files app, containing your inventory of liked-shortcuts from Shortcuty."
+    show("{@welcome}")
+}
+
+/* main menu and unfinished sessions */
+
+@startupChoice = ""
+repeat startupPass for 100 {
+    if @startupChoice == "" {
+        @startupOptions = []
+        if @canResume == 1 {
+            @startupOptions += "Resume last session"
+        }
+        if @hasCatalog == 1 {
+            @startupOptions += "Use current scanned markdown file"
+        }
+        @startupOptions += "Scan/rescan a markdown file"
+        @startupOptions += "View/edit config & cached data"
+        @startupOptions += "Exit"
+
+        @startupInfo = "Mode: {@importMode}\nWait: {@delaySeconds} seconds"
+        if @hasCatalog == 1 {
+            @startupInfo = "Cached: {@cacheDisplayName}\n\n{@startupInfo}"
+        }
+        if @canResume == 1 {
+            @startupInfo += "\nIncomplete: {@sessionGroup}"
+        }
+        @rawStartup = chooseFromList(
+            @startupOptions,
+            "Shortcuty Import Helper\n\n{@startupInfo}"
+        )
+        @startupChoice = "{@rawStartup}"
+
+        if @startupChoice == "Exit" {
+            stop()
+        }
+        if @startupChoice == "View/edit config & cached data" {
+            launchConfig("Shortcuty Import Helper Config")
+            stop()
+        }
+
+        if @canResume == 1 && @startupChoice != "Resume last session" {
+            @changeChoices = list(
+                "Cancel, go back",
+                "Override previous unfinished session, & continue"
+            )
+            @rawChange = chooseFromList(
+                @changeChoices,
+                "An unfinished session exists for {@sessionGroup}.\n\nStarting elsewhere replaces its resume position."
+            )
+            @change = "{@rawChange}"
+            if @change == "Cancel, go back" {
+                @startupChoice = ""
+            }
+        }
+    }
+}
+
+if @startupChoice != "Resume last session" {
+    @decisionsText = ""
+    @actionRunText = "|"
+    @actionHistoryAddsText = "|"
+}
+
+/* scan a markdown catalog */
+
+@scannedNow = 0
+if @startupChoice == "Scan/rescan a markdown file" {
+    @selectedFile = selectFile()
+    @selectedNameRaw = getName(@selectedFile)
+    @selectedName = "{@selectedNameRaw}"
+
+    alert(
+        "Scanning your inventory, This may take a moment depending on how much content it has.",
+        "Reading Catalog"
+    )
+
+    @sourceText = getText(@selectedFile)
+    @sourceLines = splitDynamic(@sourceText)
+    @groupIndexText = ""
+    @recordIndexText = ""
+    @readyIndexText = ""
+    @activeGroup = ""
+    @pending = 0
+    @pendingName = ""
+    @foundGroups = 0
+    @foundReady = 0
+
+    @sourceRowCount = count(@sourceLines)
+    @sourceRowIndex = 0
+    repeat scanSourcePass for @sourceRowCount {
+        @sourceRowIndex += 1
+        @sourceRowRaw = getListItem(@sourceLines, @sourceRowIndex)
+        @line = "{@sourceRowRaw}"
+
+        if @line beginsWith "## " {
+            if @pending == 1 {
+                @recordIndexText += "{@activeGroup}~SPLIT~invalid~SPLIT~{@pendingName}~SPLIT~none\n"
+            }
+            @pending = 0
+            @headingParts = splitFolderHeading(@line)
+            @rawHeading = getLastItem(@headingParts)
+            @activeGroup = "{@rawHeading}"
+            @groupIndexText += "{@activeGroup}\n"
+            @foundGroups += 1
+        }
+
+        if @activeGroup != "" {
+            if @line beginsWith "- [x] " {
+                if @pending == 1 {
+                    @recordIndexText += "{@activeGroup}~SPLIT~invalid~SPLIT~{@pendingName}~SPLIT~none\n"
+                }
+                @checkedParts = splitCheckedName(@line)
+                @rawCheckedName = getLastItem(@checkedParts)
+                @pendingName = "{@rawCheckedName}"
+                @pending = 1
+            }
+
+            if @line beginsWith "- [ ] " {
+                if @pending == 1 {
+                    @recordIndexText += "{@activeGroup}~SPLIT~invalid~SPLIT~{@pendingName}~SPLIT~none\n"
+                }
+                @pending = 0
+                @uncheckedParts = splitUncheckedName(@line)
+                @rawUnchecked = getLastItem(@uncheckedParts)
+                @uncheckedName = "{@rawUnchecked}"
+                @recordIndexText += "{@activeGroup}~SPLIT~unchecked~SPLIT~{@uncheckedName}~SPLIT~none\n"
+            }
+
+            if @line contains "Install: https://" {
+                if @pending == 1 {
+                    @linkParts = splitInstallLine(@line)
+                    @rawLink = getLastItem(@linkParts)
+                    @installLink = "{@rawLink}"
+                    if @installLink beginsWith "https://shortcuty.app/api/shortcuts/" {
+                        if @installLink endsWith "/get" {
+                            @recordIndexText += "{@activeGroup}~SPLIT~ready~SPLIT~{@pendingName}~SPLIT~{@installLink}\n"
+                            @readyIndexText += "{@activeGroup}~SPLIT~{@pendingName}~SPLIT~{@installLink}\n"
+                            @foundReady += 1
+                        } else {
+                            @recordIndexText += "{@activeGroup}~SPLIT~invalid~SPLIT~{@pendingName}~SPLIT~none\n"
+                        }
+                    } else {
+                        @recordIndexText += "{@activeGroup}~SPLIT~invalid~SPLIT~{@pendingName}~SPLIT~none\n"
+                    }
+                    @pending = 0
+                }
+            }
+        }
+    }
+
+    if @pending == 1 {
+        @recordIndexText += "{@activeGroup}~SPLIT~invalid~SPLIT~{@pendingName}~SPLIT~none\n"
+    }
+
+    if @foundGroups == 0 {
+        alert("No ## section headings found.", "Invalid Catalog")
+        stop()
+    }
+    if @foundReady == 0 {
+        alert("No checked Shortcuty install links found.", "Invalid Catalog")
+        stop()
+    }
+
+    @cacheSource = "{@selectedName}"
+    @cacheKey = "{@selectedName}"
+    @hasCatalog = 1
+    @cacheData = {
+        "schemaVersion": 2,
+        "scanned": true,
+        "sourceName": "{@cacheSource}",
+        "catalogKey": "{@cacheKey}",
+        "scannedAt": "",
+        "groupsText": "{@groupIndexText}",
+        "indexText": "{@recordIndexText}",
+        "readyIndexText": "{@readyIndexText}",
+        "installedText": ""
+    }
+    saveFile("Shortcuty Import Helper/cache.json", @cacheData, true)
+
+    @sessionData = {
+        "schemaVersion": 2,
+        "active": false,
+        "catalogKey": "",
+        "group": "",
+        "selectionType": "",
+        "selectionText": "",
+        "nextIndex": 1,
+        "total": 0,
+        "installedCount": 0,
+        "skippedCount": 0,
+        "decisionsText": "",
+        "actionRunText": "|",
+        "actionHistoryAddsText": "|"
+    }
+    saveFile("Shortcuty Import Helper/session.json", @sessionData, true)
+    @canResume = 0
+    @decisionsText = ""
+    @actionRunText = "|"
+    @actionHistoryAddsText = "|"
+
+    @scannedNow = 1
+}
+
+/* load the cached catalog */
+
+@groupTextRaw = getValue(@cacheData, "groupsText")
+@indexTextRaw = getValue(@cacheData, "indexText")
+@groupText = "{@groupTextRaw}"
+@indexText = "{@indexTextRaw}"
+
+/* use the saved section names for the section picker */
+@groupLines = splitDynamic(@groupText)
+@groupCount = 0
+@savedGroupRowsCount = count(@groupLines)
+@savedGroupIndex = 0
+repeat countSavedGroupPass for @savedGroupRowsCount {
+    @savedGroupIndex += 1
+    @savedGroupRaw = getListItem(@groupLines, @savedGroupIndex)
+    @savedGroupName = "{@savedGroupRaw}"
+    if @savedGroupName != "" {
+        @groupCount += 1
+    }
+}
+if @groupCount == 0 {
+    alert(
+        "The cached catalog has no section index.\n\nSelect 'Scan/rescan a markdown file' to rebuild it.",
+        "Cache Missing"
+    )
+    stop()
+}
+
+/* build the ready-only index if the cache does not have one */
+@readyIndexRaw = getValue(@cacheData, "readyIndexText")
+@readyIndexText = ""
+if @readyIndexRaw {
+    @readyIndexText = "{@readyIndexRaw}"
+}
+if @readyIndexText == "" && @indexText != "" {
+    @oldRows = splitDynamic(@indexText)
+    @oldRowCount = count(@oldRows)
+    @oldRowIndex = 0
+    repeat upgradeOldCachePass for @oldRowCount {
+        @oldRowIndex += 1
+        @oldRowRaw = getListItem(@oldRows, @oldRowIndex)
+        @oldRow = "{@oldRowRaw}"
+        if @oldRow contains "~SPLIT~" {
+            @oldFields = splitCachedRecord(@oldRow)
+            @oldStatusRaw = getListItem(@oldFields, 2)
+            @oldStatus = "{@oldStatusRaw}"
+            if @oldStatus == "ready" {
+                @oldGroupRaw = getListItem(@oldFields, 1)
+                @oldNameRaw = getListItem(@oldFields, 3)
+                @oldURLRaw = getListItem(@oldFields, 4)
+                @readyIndexText += "{@oldGroupRaw}~SPLIT~{@oldNameRaw}~SPLIT~{@oldURLRaw}\n"
+            }
+        }
+    }
+    @cacheData = setValue(@cacheData, "readyIndexText", "{@readyIndexText}")
+    saveFile("Shortcuty Import Helper/cache.json", @cacheData, true)
+}
+
+/* build installed status and section counts */
+@readyRows = splitDynamic(@readyIndexText)
+@eligibleDataText = ""
+@groupCounts = {}
+@previousGroup = ""
+@groupEligible = 0
+@groupInstalled = 0
+@seenNameTokens = "|"
+@duplicateNameTokens = "|"
+@historyFromNamesChanged = 0
+
+@detectReadyRowCount = count(@readyRows)
+@detectReadyRowIndex = 0
+repeat detectReadyPass for @detectReadyRowCount {
+    @detectReadyRowIndex += 1
+    @detectReadyRowRaw = getListItem(@readyRows, @detectReadyRowIndex)
+    @readyRow = "{@detectReadyRowRaw}"
+    if @readyRow contains "~SPLIT~" {
+        @readyFields = splitCachedRecord(@readyRow)
+        @entryGroupRaw = getListItem(@readyFields, 1)
+        @entryNameRaw = getListItem(@readyFields, 2)
+        @entryURLRaw = getListItem(@readyFields, 3)
+        @entryGroup = "{@entryGroupRaw}"
+        @entryName = "{@entryNameRaw}"
+        @entryURL = "{@entryURLRaw}"
+
+        if @previousGroup != "" && @entryGroup != @previousGroup {
+            @groupCounts = setValue(
+                @groupCounts,
+                "{@previousGroup}",
+                "{@groupEligible}~SPLIT~{@groupInstalled}"
+            )
+            @groupEligible = 0
+            @groupInstalled = 0
+        }
+        @previousGroup = "{@entryGroup}"
+
+        @isDetected = 0
+        @historyToken = "|{@entryURL}|"
+        @nameToken = "|{@entryName}|"
+        if @detectHistory == "Yes" {
+            if @historyText contains @historyToken {
+                @isDetected = 1
+            }
+        }
+        if @detectNames == "Yes" {
+            if @installedNamesText contains @nameToken {
+                @isDetected = 1
+                /* save matching shortcut names to history even when history detection is off */
+                if @historyText !contains @historyToken {
+                    @historyText += "{@historyToken}"
+                    @historyFromNamesChanged = 1
+                }
+            }
+        }
+        if @detectActions == "Yes" {
+            if @actionRunText contains @historyToken {
+                @isDetected = 1
+            }
+        }
+        @groupEligible += 1
+        if @isDetected == 1 {
+            @groupInstalled += 1
+        }
+        @eligibleDataText += "{@entryGroup}~SPLIT~{@entryName}~SPLIT~{@entryURL}~SPLIT~{@isDetected}\n"
+
+        if @seenNameTokens contains @nameToken {
+            if @duplicateNameTokens !contains @nameToken {
+                @duplicateNameTokens += "{@nameToken}"
+            }
+        } else {
+            @seenNameTokens += "{@nameToken}"
+        }
+    }
+}
+if @historyFromNamesChanged == 1 {
+    @historyData = setValue(@historyData, "installedText", "{@historyText}")
+    saveFile("Shortcuty Import Helper/history.json", @historyData, true)
+}
+
+if @previousGroup != "" {
+    @groupCounts = setValue(
+        @groupCounts,
+        "{@previousGroup}",
+        "{@groupEligible}~SPLIT~{@groupInstalled}"
+    )
+}
+
+/* map section labels to their original names */
+@sectionDisplayText = ""
+@sectionLabelMap = {}
+@sectionRowCount = count(@groupLines)
+@sectionRowIndex = 0
+repeat sectionLabelPass for @sectionRowCount {
+    @sectionRowIndex += 1
+    @sectionRowRaw = getListItem(@groupLines, @sectionRowIndex)
+    @sectionName = "{@sectionRowRaw}"
+    if @sectionName != "" {
+        @sectionLabel = "{@sectionName}"
+        @countValue = getValue(@groupCounts, "{@sectionName}")
+        if @countValue {
+            @countFields = splitCachedRecord(@countValue)
+            @countReadyRaw = getListItem(@countFields, 1)
+            @countInstalledRaw = getListItem(@countFields, 2)
+            @countReady = number(@countReadyRaw)
+            @countInstalled = number(@countInstalledRaw)
+            if @countInstalled > 0 {
+                @sectionLabel = "{@sectionName} — [{@countInstalled}/{@countReady} installed]"
+            }
+        }
+        @sectionDisplayText += "{@sectionLabel}\n"
+        @sectionLabelMap = setValue(@sectionLabelMap, "{@sectionLabel}", "{@sectionName}")
+    }
+}
+@sectionOptionsText = "{@sectionDisplayText}[All sections]\n[Custom]\n[Back to main menu]"
+@sectionOptions = splitDynamic(@sectionOptionsText)
+
+/* build custom selections only when needed */
+
+/* show the cache confirmation after the section picker is ready */
+if @scannedNow == 1 {
+    alert(
+        "Cached {@foundReady} checked shortcuts across {@foundGroups} sections.\n\nLaunching the Import Helper for this markdown file will be faster going forward.",
+        "Catalog Ready"
+    )
+}
+
+/* choose what to import */
+
+@keepSessionMenu = 1
+repeat sessionCycle for 100 {
+    if @keepSessionMenu == 1 {
+
+@selectionType = "Section"
+@chosenGroup = ""
+@selectionText = ""
+@isResume = 0
+@startIndex = 1
+@installed = 0
+@skipped = 0
+
+@scopeReady = 0
+repeat selectionPass for 100 {
+    if @scopeReady == 0 {
+        if @startupChoice == "Resume last session" {
+            @isResume = 1
+            @savedTypeRaw = getValue(@sessionData, "selectionType")
+            @selectionType = "{@savedTypeRaw}"
+            if @selectionType == "All" {
+                @selectionType = "All sections"
+            }
+            if @selectionType != "All sections" && @selectionType != "Custom" {
+                @selectionType = "Section"
+            }
+            @chosenGroup = "{@sessionGroup}"
+            if @chosenGroup == "All" {
+                @chosenGroup = "All sections"
+            }
+            @savedSelectionRaw = getValue(@sessionData, "selectionText")
+            @selectionText = "{@savedSelectionRaw}"
+            @startIndex = @sessionNext
+            @installedRaw = getValue(@sessionData, "installedCount")
+            @skippedRaw = getValue(@sessionData, "skippedCount")
+            @installed = number(@installedRaw)
+            @skipped = number(@skippedRaw)
+            @resumeDecisionsRaw = getValue(@sessionData, "decisionsText")
+            @resumeActionsRaw = getValue(@sessionData, "actionRunText")
+            @resumeHistoryAddsRaw = getValue(@sessionData, "actionHistoryAddsText")
+            @decisionsText = ""
+            @actionRunText = "|"
+            @actionHistoryAddsText = "|"
+            if @resumeDecisionsRaw {
+                @decisionsText = "{@resumeDecisionsRaw}"
+            }
+            if @resumeActionsRaw {
+                @actionRunText = "{@resumeActionsRaw}"
+            }
+            if @resumeHistoryAddsRaw {
+                @actionHistoryAddsText = "{@resumeHistoryAddsRaw}"
+            }
+            @scopeReady = 1
+        } else {
+            @rawSectionChoice = chooseFromList(
+                @sectionOptions,
+                "Select a section of shortcuts from your markdown file to start importing"
+            )
+            @sectionChoice = "{@rawSectionChoice}"
+            if @sectionChoice == "[Back to main menu]" {
+                runSelf(@reopenMainMarker)
+                stop()
+            }
+            @decisionsText = ""
+            @actionRunText = "|"
+            @actionHistoryAddsText = "|"
+            if @sectionChoice == "" {
+                stop()
+            }
+            if @sectionChoice == "[All sections]" {
+                @chosenGroup = "All sections"
+                @selectionType = "All sections"
+            } else {
+                if @sectionChoice == "[Custom]" {
+                    @chosenGroup = "Custom"
+                    @selectionType = "Custom"
+                } else {
+                    @chosenGroupRaw = getValue(@sectionLabelMap, "{@sectionChoice}")
+                    @chosenGroup = "{@chosenGroupRaw}"
+                    @selectionType = "Section"
+                    if @chosenGroup == "" {
+                        alert("The selected section could not be identified.", "Cache Missing")
+                        stop()
+                    }
+                }
+            }
+        }
+
+        if @selectionType != "Custom" {
+            @scopeReady = 1
+        }
+
+/* custom shortcut selection */
+
+        if @selectionType == "Custom" && @isResume == 0 {
+            /* use the cached links for custom selections */
+            @customText = ""
+            @customSelectedNumbers = "|"
+            @customCount = 0
+            @customSections = 0
+            @customSelectedGroupNamesText = ""
+            @customAction = ""
+
+            repeat customPass for 100 {
+                if @customAction == "" {
+                    /* show installed and selected counts for each section */
+                    @customMenuText = ""
+                    @customLabelMap = {}
+                    @customSelectedGroupRows = splitDynamic(@customSelectedGroupNamesText)
+                    @customSelectedGroupRowsCount = count(@customSelectedGroupRows)
+                    @customSectionRowsCount = count(@groupLines)
+                    @customSectionIndex = 0
+                    repeat customSectionPass for @customSectionRowsCount {
+                        @customSectionIndex += 1
+                        @customSectionRaw = getListItem(@groupLines, @customSectionIndex)
+                        @customSectionName = "{@customSectionRaw}"
+                        if @customSectionName != "" {
+                            @customSectionLabel = "{@customSectionName}"
+                            @customInstalledCount = 0
+                            @customInstalledCountsRaw = getValue(@groupCounts, "{@customSectionName}")
+                            if @customInstalledCountsRaw {
+                                @customInstalledCountsParts = splitCachedRecord(@customInstalledCountsRaw)
+                                @customReadyRaw = getListItem(@customInstalledCountsParts, 1)
+                                @customInstalledRaw = getListItem(@customInstalledCountsParts, 2)
+                                @customReadyCount = number(@customReadyRaw)
+                                @customInstalledCount = number(@customInstalledRaw)
+                                if @customInstalledCount > 0 {
+                                    @customSectionLabel += " — [{@customInstalledCount}/{@customReadyCount} installed]"
+                                }
+                            }
+                            @customSelectedInSection = 0
+                            @customSelectedGroupIndex = 0
+                            if @customSelectedGroupRowsCount > 0 {
+                                repeat customSelectedGroupPass for @customSelectedGroupRowsCount {
+                                    @customSelectedGroupIndex += 1
+                                    @customSelectedGroupRaw = getListItem(@customSelectedGroupRows, @customSelectedGroupIndex)
+                                    @customSelectedGroup = "{@customSelectedGroupRaw}"
+                                    if @customSelectedGroup == @customSectionName {
+                                        @customSelectedInSection += 1
+                                    }
+                                }
+                            }
+                            if @customSelectedInSection > 0 {
+                                if @customInstalledCount > 0 {
+                                    @customSectionLabel += " [{@customSelectedInSection} Selected]"
+                                } else {
+                                    @customSectionLabel += " — [{@customSelectedInSection} Selected]"
+                                }
+                            }
+                            @customMenuText += "{@customSectionLabel}\n"
+                            @customLabelMap = setValue(@customLabelMap, "{@customSectionLabel}", "{@customSectionName}")
+                        }
+                    }
+                    @customMenuText += "All sections\n[Review selections / Continue]\n[Back to sections]"
+                    @customOptions = splitDynamic(@customMenuText)
+                    @rawBuilderChoice = chooseFromList(
+                        @customOptions,
+                        "Custom Import — Select Shortcuts\n\nSelected: {@customCount} shortcuts"
+                    )
+                    @builderChoice = "{@rawBuilderChoice}"
+
+                    if @builderChoice == "" || @builderChoice == "[Back to sections]" {
+                        @customAction = "Canceled"
+                    }
+                    if @builderChoice == "[Review selections / Continue]" {
+                        if @customCount > 0 {
+                            @reviewChoices = list("Continue to session overview", "Edit selections", "Back to sections")
+                            @rawReview = chooseFromList(
+                                @reviewChoices,
+                                "Custom Import\n\nSelected: {@customCount} shortcuts\nSections: {@customSections}"
+                            )
+                            @reviewChoice = "{@rawReview}"
+                            if @reviewChoice == "Continue to session overview" {
+                                @customAction = "Done"
+                            }
+                            if @reviewChoice == "Back to sections" {
+                                @customAction = "Canceled"
+                            }
+                        } else {
+                            alert("Select at least one shortcut first.", "Nothing selected")
+                        }
+                    }
+
+                    if @customAction == "" && @builderChoice != "[Review selections / Continue]" {
+                        @builderGroup = ""
+                        if @builderChoice == "All sections" {
+                            @builderGroup = "All sections"
+                        } else {
+                            @builderGroupRaw = getValue(@customLabelMap, "{@builderChoice}")
+                            @builderGroup = "{@builderGroupRaw}"
+                        }
+
+                        /* identify each shortcut by its position in the catalog */
+                        @pickText = ""
+                        @browseOrdinal = 0
+                        @browseRowsExamined = 0
+                        @browseRowsAvailable = count(@readyRows)
+                        repeat browseRowPass for @browseRowsAvailable {
+                            @browseRowsExamined += 1
+                            @browseLineRaw = getListItem(@readyRows, @browseRowsExamined)
+                            @browseLine = "{@browseLineRaw}"
+                            if @browseLine contains "~SPLIT~" {
+                                @browseOrdinal += 1
+                                @browseParts = splitCachedRecord(@browseLine)
+                                @browseGroupRaw = getListItem(@browseParts, 1)
+                                @browseNameRaw = getListItem(@browseParts, 2)
+                                @browseURLRaw = getListItem(@browseParts, 3)
+                                @browseGroup = "{@browseGroupRaw}"
+                                @browseName = "{@browseNameRaw}"
+                                @browseURL = "{@browseURLRaw}"
+                                if @builderGroup == "All sections" || @browseGroup == @builderGroup {
+                                    @pickLabel = "{@browseOrdinal} • {@browseName}"
+                                    @browseURLToken = "|{@browseURL}|"
+                                    @browseNameToken = "|{@browseName}|"
+                                    @browseDetected = 0
+                                    if @detectHistory == "Yes" && @historyText contains @browseURLToken {
+                                        @browseDetected = 1
+                                    }
+                                    if @detectNames == "Yes" && @installedNamesText contains @browseNameToken {
+                                        @browseDetected = 1
+                                    }
+                                    if @detectActions == "Yes" && @actionRunText contains @browseURLToken {
+                                        @browseDetected = 1
+                                    }
+                                    if @browseDetected == 1 {
+                                        @pickLabel += " — [Already installed]"
+                                    }
+                                    @selectedNumberToken = "|{@browseOrdinal}|"
+                                    if @customSelectedNumbers contains @selectedNumberToken {
+                                        @pickLabel = "✓ {@pickLabel}"
+                                    }
+                                    @pickText += "{@pickLabel}\n"
+                                }
+                            }
+                        }
+
+                        if @pickText == "" {
+                            alert(
+                                "No checked installation links found in {@builderGroup}.\n\nDiagnostic: cached rows {@browseRowsAvailable}, examined {@browseRowsExamined}, recognized {@browseOrdinal}.",
+                                "Nothing to Import"
+                            )
+                        } else {
+                            @pickOptions = splitDynamic(@pickText)
+                            @rawPicked = chooseFromList(
+                                @pickOptions,
+                                "Select shortcuts from {@builderGroup}",
+                                true
+                            )
+                            if @rawPicked {
+                                @pickedRowsCount = count(@rawPicked)
+                                @pickedRowIndex = 0
+                                repeat pickedRowPass for @pickedRowsCount {
+                                    @pickedRowIndex += 1
+                                    @pickedLabelRaw = getListItem(@rawPicked, @pickedRowIndex)
+                                    @pickedText = "{@pickedLabelRaw}"
+                                    @pickedText = replaceText("✓ ", "", @pickedText)
+                                    @pickedParts = splitCustomIndex(@pickedText)
+                                    @pickedIndexRaw = getListItem(@pickedParts, 1)
+                                    @pickedIndex = number(@pickedIndexRaw)
+                                    @pickedToken = "|{@pickedIndex}|"
+                                    if @pickedIndex >= 1 {
+                                        if @customSelectedNumbers contains @pickedToken {
+                                            @customSelectedNumbers = replaceText(
+                                                "{@pickedToken}", "", @customSelectedNumbers
+                                            )
+                                        } else {
+                                            @customSelectedNumbers += "{@pickedToken}"
+                                        }
+                                    }
+                                }
+
+                                /* keep selected links in catalog order */
+                                @customText = ""
+                                @customCount = 0
+                                @customSections = 0
+                                @customSelectedGroupNamesText = ""
+                                @selectedSectionTokens = "|"
+                                @selectedURLTokens = "|"
+                                @recountOrdinal = 0
+                                @recountRowsCount = count(@readyRows)
+                                @recountRowIndex = 0
+                                repeat recountRowPass for @recountRowsCount {
+                                    @recountRowIndex += 1
+                                    @recountLineRaw = getListItem(@readyRows, @recountRowIndex)
+                                    @recountLine = "{@recountLineRaw}"
+                                    if @recountLine contains "~SPLIT~" {
+                                        @recountOrdinal += 1
+                                        @recountNumberToken = "|{@recountOrdinal}|"
+                                        if @customSelectedNumbers contains @recountNumberToken {
+                                            @recountParts = splitCachedRecord(@recountLine)
+                                            @recountGroupRaw = getListItem(@recountParts, 1)
+                                            @recountURLRaw = getListItem(@recountParts, 3)
+                                            @recountGroup = "{@recountGroupRaw}"
+                                            @recountURL = "{@recountURLRaw}"
+                                            @recountURLToken = "|{@recountURL}|"
+                                            if @selectedURLTokens !contains @recountURLToken {
+                                                @selectedURLTokens += "{@recountURLToken}"
+                                                @customText += "{@recountURLToken}"
+                                                @customCount += 1
+                                                @customSelectedGroupNamesText += "{@recountGroup}\n"
+                                                @recountGroupToken = "|{@recountGroup}|"
+                                                if @selectedSectionTokens !contains @recountGroupToken {
+                                                    @selectedSectionTokens += "{@recountGroupToken}"
+                                                    @customSections += 1
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if @customAction == "Done" {
+                @selectionText = "{@customText}"
+                @scopeReady = 1
+            }
+            if @customAction == "Canceled" {
+                @selectionType = "Section"
+            }
+        }
+
+    }
+}
+
+/* prepare the chosen shortcuts */
+
+alert("Preparing {@chosenGroup} from the cached catalog.", "Preparing Folder")
+
+@sessionEntriesText = ""
+@ready = 0
+@unchecked = 0
+@invalidLinks = 0
+@detectedInstalled = 0
+@seenCustomURLs = "|"
+@cachedRowsSeen = 0
+@scopedRowsExamined = 0
+@readyRowsCount = count(@readyRows)
+
+/* look up each cached entry by its position */
+repeat scopedRowPass for @readyRowsCount {
+    @scopedRowsExamined += 1
+    @scopedRowRaw = getListItem(@readyRows, @scopedRowsExamined)
+    @scopedRow = "{@scopedRowRaw}"
+    if @scopedRow contains "~SPLIT~" {
+        @cachedRowsSeen += 1
+        @scopeFields = splitCachedRecord(@scopedRow)
+        @scopeGroupRaw = getListItem(@scopeFields, 1)
+        @scopeNameRaw = getListItem(@scopeFields, 2)
+        @scopeURLRaw = getListItem(@scopeFields, 3)
+        @scopeGroup = "{@scopeGroupRaw}"
+        @scopeName = "{@scopeNameRaw}"
+        @scopeURL = "{@scopeURLRaw}"
+        @scopeToken = "|{@scopeURL}|"
+
+        @scopeFlag = 0
+        if @detectHistory == "Yes" && @historyText contains @scopeToken {
+            @scopeFlag = 1
+        }
+        @scopeNameToken = "|{@scopeName}|"
+        if @detectNames == "Yes" && @installedNamesText contains @scopeNameToken {
+            @scopeFlag = 1
+        }
+        if @detectActions == "Yes" && @actionRunText contains @scopeToken {
+            @scopeFlag = 1
+        }
+
+        @included = 0
+        if @selectionType == "All sections" {
+            @included = 1
+        }
+        if @selectionType == "Section" && @scopeGroup == @chosenGroup {
+            @included = 1
+        }
+        if @selectionType == "Custom" {
+            @scopeToken = "|{@scopeURL}|"
+            if @selectionText contains @scopeToken {
+                if @seenCustomURLs !contains @scopeToken {
+                    @included = 1
+                    @seenCustomURLs += "{@scopeToken}"
+                }
+            }
+        }
+        if @included == 1 {
+            @sessionEntriesText += "{@scopeGroup}~SPLIT~{@scopeName}~SPLIT~{@scopeURL}~SPLIT~{@scopeFlag}\n"
+            @ready += 1
+            if @scopeFlag == 1 {
+                @detectedInstalled += 1
+            }
+        }
+    }
+}
+
+/* count excluded and invalid entries in the chosen section */
+if @selectionType != "Custom" {
+    @scopeIndexRows = splitDynamic(@indexText)
+    @scopeIndexCount = count(@scopeIndexRows)
+    @statusRowIndex = 0
+    repeat statusRowPass for @scopeIndexCount {
+        @statusRowIndex += 1
+        @statusRowRaw = getListItem(@scopeIndexRows, @statusRowIndex)
+        @statusRow = "{@statusRowRaw}"
+        if @statusRow contains "~SPLIT~" {
+            @statusParts = splitCachedRecord(@statusRow)
+            @statusGroupRaw = getListItem(@statusParts, 1)
+            @statusValueRaw = getListItem(@statusParts, 2)
+            @statusGroup = "{@statusGroupRaw}"
+            @statusValue = "{@statusValueRaw}"
+            if @selectionType == "All sections" || @statusGroup == @chosenGroup {
+                if @statusValue == "unchecked" {
+                    @unchecked += 1
+                }
+                if @statusValue == "invalid" {
+                    @invalidLinks += 1
+                }
+            }
+        }
+    }
+}
+
+if @ready == 0 {
+    alert(
+        "No checked installation links found in {@chosenGroup}.\n\nDiagnostic: cached rows {@readyRowsCount}, examined {@scopedRowsExamined}, recognized {@cachedRowsSeen}, selected {@ready}, type {@selectionType}.",
+        "Nothing to Import"
+    )
+    stop()
+}
+
+if @startIndex > @ready {
+    @savedSelectionTypeRaw = getValue(@sessionData, "selectionType")
+    @savedSelectionTextRaw = getValue(@sessionData, "selectionText")
+    @savedInstalledRaw = getValue(@sessionData, "installedCount")
+    @savedSkippedRaw = getValue(@sessionData, "skippedCount")
+    @sessionData = {
+        "schemaVersion": 2,
+        "active": false,
+        "catalogKey": "{@sessionKey}",
+        "group": "{@sessionGroup}",
+        "selectionType": "{@savedSelectionTypeRaw}",
+        "selectionText": "{@savedSelectionTextRaw}",
+        "nextIndex": "{@sessionNext}",
+        "total": "{@sessionTotal}",
+        "installedCount": "{@savedInstalledRaw}",
+        "skippedCount": "{@savedSkippedRaw}",
+        "decisionsText": "{@decisionsText}",
+        "actionRunText": "{@actionRunText}",
+        "actionHistoryAddsText": "{@actionHistoryAddsText}"
+    }
+    saveFile("Shortcuty Import Helper/session.json", @sessionData, true)
+    alert("No shortcuts remain in this session.", "Already Complete")
+    stop()
+}
+
+/* session details */
+
+@automaticLimitLine = ""
+if @importMode == "Automatic Mode" {
+    @automaticLimitLine = "\nLimit: {@sessionLimit} (0 = unlimited)"
+}
+
+@modeInstructions = "Guided Mode asks what to do with each shortcut. After opening an installation link you'll have {@delaySeconds} seconds to press the 'Add Shortcut' button before the next import popup will appear.\n\nSome shortcuts may need setup before they can be added, if you need more time use 'Ask me again in # seconds'.\n\nIf you want to end/pause the session or accidentally do, you can always resume after."
+if @importMode == "Automatic Mode" {
+    @modeInstructions = "Automatic Mode opens installation links without asking before each one. After opening an installation link you'll have {@delaySeconds} seconds to press the 'Add Shortcut' button before the next shortcut installation will launch. The optional configured session limit applies.\n\nIf you want to end/pause the session or accidentally do, you can always resume after."
+}
+
+@selectionCountLabel = "Set for import"
+if @selectionType == "Custom" {
+    @selectionCountLabel = "Selected"
+}
+
+@remainingBefore = @ready - @installed - @skipped
+if @remainingBefore < 0 {
+    @remainingBefore = 0
+}
+@overview = "{@chosenGroup}\n\nNew session\n{@selectionCountLabel}: {@ready}\nDetected already installed: {@detectedInstalled}\nExcluded: {@unchecked}\nInvalid: {@invalidLinks}\n\nMode: {@importMode}\nWait: {@delaySeconds} seconds{@automaticLimitLine}\n\n{@modeInstructions}"
+
+@startOptions = list("Begin importing", "Back to sections")
+if @isResume == 1 {
+    @overview = "{@chosenGroup}\n\nResuming at {@startIndex} of {@ready}\n\n{@selectionCountLabel}: {@ready}\nDetected already installed: {@detectedInstalled}\nInstalled this session: {@installed}\nSkipped this session: {@skipped}\nRemaining: {@remainingBefore}\nExcluded: {@unchecked}\nInvalid: {@invalidLinks}\n\nMode: {@importMode}\nWait: {@delaySeconds} seconds{@automaticLimitLine}\n\n{@modeInstructions}"
+    @startOptions = list("Resume importing", "Back to main menu")
+}
+
+show("{@overview}")
+@rawStart = chooseFromList(@startOptions, "Ready to import {@chosenGroup}?")
+@startChoice = "{@rawStart}"
+if @startChoice == "Back to sections" {
+    /* return to the sections without saving a new session */
+    @startupChoice = "Use current scanned markdown file"
+}
+if @startChoice == "Back to main menu" {
+    /* preserve the unfinished session when returning to the main menu */
+    runSelf(@reopenMainMarker)
+    stop()
+}
+
+if @startChoice == "Begin importing" || @startChoice == "Resume importing" {
+
+/* save the session before importing */
+
+@sessionData = {
+    "schemaVersion": 2,
+    "active": true,
+    "catalogKey": "{@cacheKey}",
+    "group": "{@chosenGroup}",
+    "selectionType": "{@selectionType}",
+    "selectionText": "{@selectionText}",
+    "nextIndex": "{@startIndex}",
+    "total": "{@ready}",
+    "installedCount": "{@installed}",
+    "skippedCount": "{@skipped}",
+    "decisionsText": "{@decisionsText}",
+    "actionRunText": "{@actionRunText}",
+    "actionHistoryAddsText": "{@actionHistoryAddsText}"
+}
+saveFile("Shortcuty Import Helper/session.json", @sessionData, true)
+
+/* guided and automatic imports */
+
+@position = 0
+@processedThisRun = 0
+@openedAny = 0
+@halted = 0
+@stopReason = ""
+@nextIndex = @startIndex
+
+@sessionRows = splitDynamic(@sessionEntriesText)
+@sessionRowsCount = count(@sessionRows)
+@sessionRowIndex = 0
+repeat sessionRowPass for @sessionRowsCount {
+    @sessionRowIndex += 1
+    @entryRowRaw = getListItem(@sessionRows, @sessionRowIndex)
+    @entryLine = "{@entryRowRaw}"
+    if @entryLine contains "~SPLIT~" {
+        @position += 1
+
+        if @position >= @startIndex && @halted == 0 {
+            if @importMode == "Automatic Mode" && @sessionLimit > 0 && @processedThisRun >= @sessionLimit {
+                @halted = 1
+                @stopReason = "Configured session limit reached"
+            } else {
+                @reviewPosition = @position
+                /* track how far back the user moves */
+                @stepsBack = 0
+                @returnToReview = 0
+                @currentEntryDone = 0
+
+                /* return to the pending shortcut after changing an earlier decision */
+                repeat reviewCycle for 100 {
+                    if @currentEntryDone == 0 && @halted == 0 {
+                        @reviewEntryRaw = getListItem(@sessionRows, @reviewPosition)
+                        @reviewEntry = "{@reviewEntryRaw}"
+                        @reviewFields = splitCachedRecord(@reviewEntry)
+                        @shortcutNameRaw = getListItem(@reviewFields, 2)
+                        @installURLRaw = getListItem(@reviewFields, 3)
+                        @shortcutName = "{@shortcutNameRaw}"
+                        @installURL = "{@installURLRaw}"
+                        @historyToken = "|{@installURL}|"
+                        @nameToken = "|{@shortcutName}|"
+
+                        @alreadyInstalled = 0
+                        if @detectHistory == "Yes" {
+                            if @historyText contains @historyToken {
+                                @alreadyInstalled = 1
+                            }
+                        }
+                        if @detectNames == "Yes" {
+                            if @installedNamesText contains @nameToken {
+                                @alreadyInstalled = 1
+                            }
+                        }
+                        if @detectActions == "Yes" {
+                            if @actionRunText contains @historyToken {
+                                @alreadyInstalled = 1
+                            }
+                        }
+
+                        @priorCode = ""
+                        @priorI = "|{@reviewPosition}:I|"
+                        @priorS = "|{@reviewPosition}:S|"
+                        @priorA = "|{@reviewPosition}:A|"
+                        @priorD = "|{@reviewPosition}:D|"
+                        if @decisionsText contains @priorI {
+                            @priorCode = "I"
+                        }
+                        if @decisionsText contains @priorS {
+                            @priorCode = "S"
+                        }
+                        if @decisionsText contains @priorA {
+                            @priorCode = "A"
+                        }
+                        if @decisionsText contains @priorD {
+                            @priorCode = "D"
+                        }
+
+                        @decision = ""
+                        if @stepsBack == 0 && @returnToReview == 0 && @alreadyInstalled == 1 && @skipInstalled == "Yes" {
+                            @decision = "Auto skip detected"
+                        } else {
+                            if @importMode == "Automatic Mode" {
+                                @decision = "Open installation"
+                            } else {
+                                @displayPrompt = "{@reviewPosition} of {@ready}\n\n{@shortcutName}"
+                                if @alreadyInstalled == 1 && @skipInstalled == "No" {
+                                    @displayPrompt += "\n[Already installed]"
+                                }
+                                if @showProgress == "Yes" {
+                                    @displayPrompt += "\n\nInstalled this session: {@installed}\nSkipped this session: {@skipped}"
+                                }
+
+                                @canGoBack = 0
+                                @prevReviewPosition = @reviewPosition - 1
+                                if @prevReviewPosition >= 1 {
+                                    @prevI = "|{@prevReviewPosition}:I|"
+                                    @prevS = "|{@prevReviewPosition}:S|"
+                                    @prevA = "|{@prevReviewPosition}:A|"
+                                    @prevD = "|{@prevReviewPosition}:D|"
+                                    if @decisionsText contains @prevI || @decisionsText contains @prevS || @decisionsText contains @prevA || @decisionsText contains @prevD {
+                                        @canGoBack = 1
+                                    }
+                                }
+
+                                /* use a mutable array for the approval menu */
+                                @approvalOptions = []
+                                @approvalOptions += "Open installation"
+                                @approvalOptions += "Skip this shortcut"
+                                @approvalOptions += "Skip, it's already installed"
+                                if @openedAny == 1 {
+                                    @approvalOptions += "Ask me again in 4 seconds"
+                                    @approvalOptions += "Ask me again in 30 seconds"
+                                    @approvalOptions += "Ask me again in 60 seconds"
+                                }
+                                if @canGoBack == 1 {
+                                    @approvalOptions += "Go to back to previous"
+                                }
+                                @approvalOptions += "End/pause session"
+
+                                @awaitingAnswer = 1
+                                repeat extension for 100 {
+                                    if @awaitingAnswer == 1 {
+                                        @rawNext = chooseFromList(@approvalOptions, "{@displayPrompt}")
+                                        @nextChoice = "{@rawNext}"
+                                        if @nextChoice == "Ask me again in 4 seconds" {
+                                            wait(4)
+                                        } else {
+                                            if @nextChoice == "Ask me again in 30 seconds" {
+                                                wait(30)
+                                            } else {
+                                                if @nextChoice == "Ask me again in 60 seconds" {
+                                                    wait(60)
+                                                } else {
+                                                    @decision = "{@nextChoice}"
+                                                    @awaitingAnswer = 0
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if @awaitingAnswer == 1 {
+                                    @decision = "End/pause session"
+                                }
+                            }
+                        }
+
+                        if @decision == "Go to back to previous" {
+                            if @canGoBack == 1 {
+                                @reviewPosition -= 1
+                                @stepsBack += 1
+                                @returnToReview = 1
+                            }
+                        } else {
+                            if @decision == "End/pause session" || @decision == "" {
+                                @halted = 1
+                                @stopReason = "Ended by user"
+                            } else {
+                                /* only undo history entries added during this session */
+                                if @priorCode == "I" {
+                                    @installed -= 1
+                                    if @processedThisRun > 0 {
+                                        @processedThisRun -= 1
+                                    }
+                                }
+                                if @priorCode == "S" || @priorCode == "A" || @priorCode == "D" {
+                                    @skipped -= 1
+                                    if @processedThisRun > 0 {
+                                        @processedThisRun -= 1
+                                    }
+                                }
+                                if @priorCode == "I" || @priorCode == "A" {
+                                    if @actionRunText contains @historyToken {
+                                        @actionRunText = replaceText("{@historyToken}", "", @actionRunText)
+                                    }
+                                    if @actionHistoryAddsText contains @historyToken {
+                                        @actionHistoryAddsText = replaceText("{@historyToken}", "", @actionHistoryAddsText)
+                                        @historyText = replaceText("{@historyToken}", "", @historyText)
+                                        @historyData = setValue(@historyData, "installedText", "{@historyText}")
+                                        saveFile("Shortcuty Import Helper/history.json", @historyData, true)
+                                    }
+                                }
+
+                                if @priorCode != "" {
+                                    @oldDecisionToken = "|{@reviewPosition}:{@priorCode}|"
+                                    @decisionsText = replaceText("{@oldDecisionToken}", "", @decisionsText)
+                                }
+
+                                @newCode = "S"
+                                if @decision == "Open installation" {
+                                    @newCode = "I"
+                                    @installed += 1
+                                    @openedAny = 1
+                                }
+                                if @decision == "Skip, it's already installed" {
+                                    @newCode = "A"
+                                    @skipped += 1
+                                }
+                                if @decision == "Skip this shortcut" || @decision == "Auto skip detected" {
+                                    @newCode = "S"
+                                    @skipped += 1
+                                    if @decision == "Auto skip detected" {
+                                        @newCode = "D"
+                                    }
+                                }
+                                @processedThisRun += 1
+                                @decisionsText += "|{@reviewPosition}:{@newCode}|"
+
+                                if @newCode == "I" || @newCode == "A" {
+                                    if @actionRunText !contains @historyToken {
+                                        @actionRunText += "{@historyToken}"
+                                    }
+                                    if @historyText !contains @historyToken {
+                                        @historyText += "{@historyToken}"
+                                        @actionHistoryAddsText += "{@historyToken}"
+                                        @historyData = setValue(@historyData, "installedText", "{@historyText}")
+                                        saveFile("Shortcuty Import Helper/history.json", @historyData, true)
+                                    }
+                                }
+
+                                /* advance the saved position after handling the current shortcut */
+                                if @stepsBack == 0 {
+                                    @nextIndex = @position + 1
+                                }
+                                @sessionData = {
+                                    "schemaVersion": 2,
+                                    "active": true,
+                                    "catalogKey": "{@cacheKey}",
+                                    "group": "{@chosenGroup}",
+                                    "selectionType": "{@selectionType}",
+                                    "selectionText": "{@selectionText}",
+                                    "nextIndex": "{@nextIndex}",
+                                    "total": "{@ready}",
+                                    "installedCount": "{@installed}",
+                                    "skippedCount": "{@skipped}",
+                                    "decisionsText": "{@decisionsText}",
+                                    "actionRunText": "{@actionRunText}",
+                                    "actionHistoryAddsText": "{@actionHistoryAddsText}"
+                                }
+                                saveFile("Shortcuty Import Helper/session.json", @sessionData, true)
+
+                                if @newCode == "I" {
+                                    nothing()
+                                    openURL("{@installURL}")
+                                    waitToReturn()
+                                    wait(@delaySeconds)
+                                }
+
+                                if @stepsBack > 0 {
+                                    /* revisit the pending shortcut after editing a previous one */
+                                    @reviewPosition += 1
+                                    @stepsBack -= 1
+                                    @returnToReview = 1
+                                } else {
+                                    @currentEntryDone = 1
+                                    @returnToReview = 0
+                                }
+                            }
+                        }
+                    }
+                }
+                if @currentEntryDone == 0 && @halted == 0 {
+                    @halted = 1
+                    @stopReason = "Review safeguard reached"
+                }
+            }
+        }
+    }
+}
+
+/* session summary and return options */
+
+@summaryPrefix = "Folder: {@chosenGroup}"
+@folderGuidanceBlock = "\n\nIf you're intending to organize these, exit the shortcut now and move the newly added shortcuts into a folder that matches the section you've just ran, before starting the next section."
+if @selectionType == "All sections" || @selectionType == "Custom" {
+    @summaryPrefix = "Selection: {@chosenGroup}"
+    @folderGuidanceBlock = ""
+}
+
+if @halted == 1 {
+    @sessionStatus = "Session paused"
+    if @stopReason == "Configured session limit reached" {
+        @sessionStatus = "Session paused — configured limit reached"
+    }
+    @sessionStatus += "\nYou can resume the saved session next time."
+} else {
+    @doneIndex = @ready + 1
+    @sessionData = {
+        "schemaVersion": 2,
+        "active": false,
+        "catalogKey": "{@cacheKey}",
+        "group": "{@chosenGroup}",
+        "selectionType": "{@selectionType}",
+        "selectionText": "{@selectionText}",
+        "nextIndex": "{@doneIndex}",
+        "total": "{@ready}",
+        "installedCount": "{@installed}",
+        "skippedCount": "{@skipped}",
+        "decisionsText": "{@decisionsText}",
+        "actionRunText": "{@actionRunText}",
+        "actionHistoryAddsText": "{@actionHistoryAddsText}"
+    }
+    saveFile("Shortcuty Import Helper/session.json", @sessionData, true)
+    @sessionStatus = "Session complete"
+}
+
+@finalSummary = "{@sessionStatus}\n\n{@summaryPrefix}\n{@selectionCountLabel}: {@ready}\nDetected already installed: {@detectedInstalled}\nInstalled this session: {@installed}\nSkipped this session: {@skipped}{@folderGuidanceBlock}"
+@finishOptions = list("Back to sections", "Exit")
+@rawFinish = chooseFromList(@finishOptions, "{@finalSummary}")
+@finishChoice = "{@rawFinish}"
+
+if @finishChoice == "Back to sections" {
+    /* keep the catalog in memory for the next section */
+    @startupChoice = "Use current scanned markdown file"
+    @canResume = 0
+    @scannedNow = 0
+
+    /* refresh installed counts before showing the sections again */
+    @refreshGroupCounts = {}
+    @refreshEligibleText = ""
+    @refreshPreviousGroup = ""
+    @refreshGroupReady = 0
+    @refreshGroupInstalled = 0
+    @refreshRowsCount = count(@readyRows)
+    @refreshRowIndex = 0
+    repeat refreshRowPass for @refreshRowsCount {
+        @refreshRowIndex += 1
+        @refreshLineRaw = getListItem(@readyRows, @refreshRowIndex)
+        @refreshLine = "{@refreshLineRaw}"
+        if @refreshLine contains "~SPLIT~" {
+            @refreshParts = splitCachedRecord(@refreshLine)
+            @refreshGroupRaw = getListItem(@refreshParts, 1)
+            @refreshNameRaw = getListItem(@refreshParts, 2)
+            @refreshURLRaw = getListItem(@refreshParts, 3)
+            @refreshGroup = "{@refreshGroupRaw}"
+            @refreshName = "{@refreshNameRaw}"
+            @refreshURL = "{@refreshURLRaw}"
+            if @refreshPreviousGroup != "" && @refreshGroup != @refreshPreviousGroup {
+                @refreshGroupCounts = setValue(
+                    @refreshGroupCounts,
+                    "{@refreshPreviousGroup}",
+                    "{@refreshGroupReady}~SPLIT~{@refreshGroupInstalled}"
+                )
+                @refreshGroupReady = 0
+                @refreshGroupInstalled = 0
+            }
+            @refreshPreviousGroup = "{@refreshGroup}"
+            @refreshDetected = 0
+            @refreshURLToken = "|{@refreshURL}|"
+            @refreshNameToken = "|{@refreshName}|"
+            if @detectHistory == "Yes" && @historyText contains @refreshURLToken {
+                @refreshDetected = 1
+            }
+            if @detectNames == "Yes" && @installedNamesText contains @refreshNameToken {
+                @refreshDetected = 1
+            }
+            @refreshGroupReady += 1
+            if @refreshDetected == 1 {
+                @refreshGroupInstalled += 1
+            }
+            @refreshEligibleText += "{@refreshGroup}~SPLIT~{@refreshName}~SPLIT~{@refreshURL}~SPLIT~{@refreshDetected}\n"
+        }
+    }
+    if @refreshPreviousGroup != "" {
+        @refreshGroupCounts = setValue(
+            @refreshGroupCounts,
+            "{@refreshPreviousGroup}",
+            "{@refreshGroupReady}~SPLIT~{@refreshGroupInstalled}"
+        )
+    }
+    @eligibleDataText = "{@refreshEligibleText}"
+    @groupCounts = @refreshGroupCounts
+    @sectionDisplayText = ""
+    @sectionLabelMap = {}
+    @refreshSectionRowsCount = count(@groupLines)
+    @refreshSectionIndex = 0
+    repeat refreshSectionPass for @refreshSectionRowsCount {
+        @refreshSectionIndex += 1
+        @refreshSectionRaw = getListItem(@groupLines, @refreshSectionIndex)
+        @refreshSectionName = "{@refreshSectionRaw}"
+        if @refreshSectionName != "" {
+            @refreshSectionLabel = "{@refreshSectionName}"
+            @refreshCountRaw = getValue(@refreshGroupCounts, "{@refreshSectionName}")
+            if @refreshCountRaw {
+                @refreshCountParts = splitCachedRecord(@refreshCountRaw)
+                @refreshReadyRaw = getListItem(@refreshCountParts, 1)
+                @refreshInstalledRaw = getListItem(@refreshCountParts, 2)
+                @refreshReadyCount = number(@refreshReadyRaw)
+                @refreshInstalledCount = number(@refreshInstalledRaw)
+                if @refreshInstalledCount > 0 {
+                    @refreshSectionLabel = "{@refreshSectionName} — [{@refreshInstalledCount}/{@refreshReadyCount} installed]"
+                }
+            }
+            @sectionDisplayText += "{@refreshSectionLabel}\n"
+            @sectionLabelMap = setValue(
+                @sectionLabelMap, "{@refreshSectionLabel}", "{@refreshSectionName}"
+            )
+        }
+    }
+    @sectionOptionsText = "{@sectionDisplayText}[All sections]\n[Custom]\n[Back to main menu]"
+    @sectionOptions = splitDynamic(@sectionOptionsText)
+} else {
+    @keepSessionMenu = 0
+    stop()
+}
+
+    }
+}
+}
