@@ -15,6 +15,31 @@ You will need to use a desktop browser to export your liked shortcuts inventory.
 > **Dev note:**   
 > Shortcuty apparently offers an action for exporting liked shortcuts, but it was no where to be found on my device.
 
+## Previews
+
+<table>
+  <tr>
+    <th align="center">Main Menu</th>
+    <th align="center">Config Menu</th>
+    <th align="center">Next Installation Screen<br><em>(Guided Mode)</em></th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img width="250" alt="Main Menu" src="https://github.com/user-attachments/assets/4f42812a-6cc7-42f0-9d9f-00cf910a590b" />
+    </td>
+    <td align="center" valign="top">
+      <img width="250" alt="Config Menu" src="https://github.com/user-attachments/assets/b64f830a-a1e7-4a2c-afce-6a84b3cfba66" />
+    </td>
+    <td align="center" valign="top">
+      <img width="250" alt="Next Installation Screen (Guided Mode)" src="https://github.com/user-attachments/assets/7dd0cdbe-a0d0-4238-8a98-b357d7f1f1db" />
+    </td>
+  </tr>
+</table>
+
+### Demo Video
+
+https://github.com/user-attachments/assets/a60a8270-312f-4c03-8620-24ac2122b05a
+
 ## Full Guide & Info
 
 ### 1. Install the shortcuts
@@ -37,7 +62,7 @@ On your computer:
 4. Paste the script into the console tab in dev tools and run it. 
    - Use "allow pasting" if console prevents you at first. 
    - **Understand that running scripts in console is never recommended if you haven't reviewed, created, or trust them!!** Malicious scripts ran in console can steal your data.   
-     If you want peace of mind, run the [liked-shortcuts-extractor.js](liked-shortcuts-extractor.js) file through [VirusTotal](https://www.virustotal.com/gui/home/upload) and/or let AI scan it and tell you it's verdict. This script only extracts your shortcuts you've liked on Shortcuty and inserts them in the markdown it creates and downloads for you. 
+     If you want peace of mind, run the `liked-shortcuts-extractor.js` file through [VirusTotal](https://www.virustotal.com/gui/home/upload) and/or let AI scan it and tell you it's verdict. This script only extracts your shortcuts you've liked on Shortcuty and inserts them in the markdown it creates and downloads for you. 
 5. Once finished, your browser will download `Shortcuty Liked Shortcuts.md`.
 
 The extractor collects your liked shortcuts across all liked pages, along with their names, descriptions, categories, installation links, and other available details.
