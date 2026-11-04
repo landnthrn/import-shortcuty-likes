@@ -1,5 +1,6 @@
 #define name Shortcuty Import Helper
 #define color blue
+#define version 18.4
 
 #include 'actions/documents'
 #include 'actions/text'
@@ -7,7 +8,6 @@
 #include 'actions/shortcuts'
 
 /* shortcuty import helper
- * version 2.0.2
  * created by landnthrn
  * https://github.com/landnthrn/
  *
@@ -106,7 +106,7 @@ if @configPresent == 0 {
         "The config shortcut wasn’t found, you’ll need to add it now to create the necessary local files for the import helper.",
         "Config Required"
     )
-    openURL("https://www.icloud.com/shortcuts/b5f06b177f86428e8babd04db5df5d33")
+    openURL("https://www.icloud.com/shortcuts/dffc035d54344578a1f209927201ab7b")
     stop()
 }
 
@@ -295,7 +295,7 @@ if @sessionActive == 1 && @canResume == 0 {
 @mainInput = "{ShortcutInput}"
 @reopenMainMarker = "SIH_REOPEN_MAIN_MENU"
 if @showWelcome == "Yes" && @mainInput != "SIH_REOPEN_MAIN_MENU" {
-    @welcome = "Shortcuty Import Helper\n\nVersion 2.0.2\nCreated by landnthrn\n\nA helper for importing, managing, and tracking a large collection of liked shortcuts from Shortcuty, into the Shortcuts app.\n\nNOTE:\n\nBefore using this shortcut, it's expected you have followed the guide from the README.md in the GitHub repo, all info you need is written in there.\n\ngithub.com/landnthrn/import-shortcuty-likes\n\nYour markdown file must be ready in the Files app, containing your inventory of liked-shortcuts from Shortcuty."
+    @welcome = "Shortcuty Import Helper\n\nCreated by landnthrn\n\nA helper for importing, managing, and organizing a large collection of liked shortcuts from Shortcuty, into the Shortcuts app.\n\nNOTE:\n\nBefore using this shortcut, it's expected you have followed the guide from the README.md in the GitHub repo, all info you need is written in there.\n\ngithub.com/landnthrn/import-shortcuty-likes\n\nYour markdown file must be ready in the Files app, containing your inventory of liked-shortcuts from Shortcuty."
     show("{@welcome}")
 }
 
@@ -313,6 +313,7 @@ repeat startupPass for 100 {
         }
         @startupOptions += "Scan/rescan a markdown file"
         @startupOptions += "View/edit config & cached data"
+        @startupOptions += "Open GitHub repo"
         @startupOptions += "Exit"
 
         @startupInfo = "Mode: {@importMode}\nWait: {@delaySeconds} seconds"
@@ -333,6 +334,10 @@ repeat startupPass for 100 {
         }
         if @startupChoice == "View/edit config & cached data" {
             launchConfig("Shortcuty Import Helper Config")
+            stop()
+        }
+        if @startupChoice == "Open GitHub repo" {
+            openURL("https://github.com/landnthrn/import-shortcuty-likes")
             stop()
         }
 

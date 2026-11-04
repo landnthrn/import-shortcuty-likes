@@ -1,8 +1,10 @@
 #define name Shortcuty Import Helper Config
 #define color blue
+#define version 18.4
 
 #include 'actions/documents'
-#include 'actions/text'
+
+action default 'text.match' matchText(text regexPattern: 'WFMatchTextPattern', text text, bool ?caseSensitive: 'WFMatchTextCaseSensitive' = true)
 
 /* shortcuty import helper config
  * created by landnthrn
@@ -393,7 +395,7 @@ if @historyText contains "https://shortcuty.app/api/shortcuts/" {
 
 /* config menu */
 
-@yesNo = list("On", "Off")
+@yesNo = list("On", "Off", "Cancel")
 @menuPage = "Main"
 
 repeat configPass for 100 {
@@ -495,14 +497,15 @@ repeat configPass for 100 {
         @preferenceOptions = list(
             "Import mode",
             "Default wait",
-            "Session limit",
+            "Session limit for automatic mode",
             "Welcome screen: On / Off",
             "Progress labels: On / Off",
             "Skip previously installed: On / Off",
             "Installation action tracking: On / Off",
             "Installed shortcut name matching: On / Off",
             "Saved installed history: On / Off",
-            "Back to main menu"
+            "Back to main menu",
+            "Exit"
         )
 
         @preferenceRaw = chooseFromList(
@@ -512,7 +515,7 @@ repeat configPass for 100 {
         @menuChoice = "{@preferenceRaw}"
     }
 
-    if @menuChoice == "Done" {
+    if @menuChoice == "Done" || @menuChoice == "Exit" {
         stop()
     }
 
@@ -527,13 +530,21 @@ repeat configPass for 100 {
     /* current settings */
 
     if @menuChoice == "View current settings" {
-        show("Current Settings\n\n{@settingsSummary}")
+        @settingsViewOptions = list("Back", "Exit")
+        @settingsViewRaw = chooseFromList(
+            @settingsViewOptions,
+            "Current Settings\n\n{@settingsSummary}"
+        )
+        @settingsViewChoice = "{@settingsViewRaw}"
+        if @settingsViewChoice == "Exit" {
+            stop()
+        }
     }
 
     /* import mode */
 
     if @menuChoice == "Import mode" {
-        @modes = list("Guided Mode", "Automatic Mode")
+        @modes = list("Guided Mode", "Automatic Mode", "Cancel")
         @rawModeChoice = chooseFromList(
             @modes,
             "Choose import mode\n\nCurrent: {@mode}\n\n'Guided Mode' asks before each installation. 'Automatic Mode' continues through the selected shortcuts after its configured wait."
@@ -611,7 +622,7 @@ repeat configPass for 100 {
 
     /* automatic mode session limit */
 
-    if @menuChoice == "Session limit" {
+    if @menuChoice == "Session limit for automatic mode" {
         @rawLimit = prompt(
             "Maximum shortcuts per 'Automatic Mode' session (0 = unlimited)\n\nCurrent: {@limit}\n\nLimits the shortcuts handled in one 'Automatic Mode' session. 'Guided Mode' has no configured session limit.",
             "Number",
@@ -766,7 +777,15 @@ repeat configPass for 100 {
             @cacheInfo += "\n\nIncomplete session: Yes\nSelection: {@sessionSelection}"
         }
 
-        show("Saved Data\n\n{@cacheInfo}")
+        @cacheViewOptions = list("Back", "Exit")
+        @cacheViewRaw = chooseFromList(
+            @cacheViewOptions,
+            "Saved Data\n\n{@cacheInfo}"
+        )
+        @cacheViewChoice = "{@cacheViewRaw}"
+        if @cacheViewChoice == "Exit" {
+            stop()
+        }
     }
 
     /* installed shortcut history */
