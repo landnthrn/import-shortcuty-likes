@@ -49,8 +49,8 @@ https://github.com/user-attachments/assets/a60a8270-312f-4c03-8620-24ac2122b05a
 ### 1. Install the shortcuts
 
 Download and add both shortcuts to your Apple Shortcuts library:
-- [Shortcuty Import Helper](https://www.icloud.com/shortcuts/8c5a1425b0c94208aa2dbb92f65c8e2d) — The main importer
-- [Shortcuty Import Helper Config](https://www.icloud.com/shortcuts/b5f06b177f86428e8babd04db5df5d33) — Manages your settings and saved data
+- [Shortcuty Import Helper](https://www.icloud.com/shortcuts/04609dffc29846d9bfe58621e7a12611) — The main importer
+- [Shortcuty Import Helper Config](https://www.icloud.com/shortcuts/dffc035d54344578a1f209927201ab7b) — Manages your settings and saved data
 
 You only really need to install and run the main shortcut, it will have you install the config if you don't have it.
 
